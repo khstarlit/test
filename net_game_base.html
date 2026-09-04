@@ -1,1 +1,464 @@
-netgame
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Network Game Template</title>
+
+<style>
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 20px 12px;
+  background: #f1f5f9;
+}
+.card {
+  background: white;
+  padding: 24px;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+h2, h3 { text-align: center; margin-top: 0; }
+input {
+  width: 100%;
+  padding: 12px;
+  margin: 6px 0;
+  font-size: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+}
+button {
+  width: 100%;
+  padding: 12px;
+  margin: 6px 0;
+  font-size: 16px;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+button:disabled { background: #94a3b8; cursor: not-allowed; }
+button:active:not(:disabled) { opacity: 0.8; }
+hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
+
+/* 화면 전환용 */
+#lobby, #game { display: none; }
+
+.room-code {
+  text-align: center;
+  font-size: 28px;
+  font-weight: bold;
+  color: #2563eb;
+  letter-spacing: 2px;
+  margin: 10px 0;
+}
+
+/* 플레이어 목록 스타일 */
+.player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 20px 0;
+}
+.player-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.player-item.is-me { border-color: #2563eb; background: #eff6ff; }
+.tag {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #cbd5e1;
+  color: #334155;
+  margin-left: 6px;
+}
+.tag.host { background: #fef08a; color: #854d0e; }
+.badge-ready { font-weight: bold; color: #16a34a; }
+.badge-waiting { color: #94a3b8; }
+
+.leave-btn { background: #64748b; margin-top: 10px; }
+.ready-btn { background: #16a34a; }
+.ready-btn.is-ready { background: #dc2626; }
+
+/* 게임 화면 영역 */
+#gameCanvas {
+  width: 100%;
+  height: 350px;
+  background: #0f172a;
+  border-radius: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  font-size: 20px;
+  margin-top: 15px;
+}
+</style>
+</head>
+
+<body>
+
+<!-- 1. 메인 로그인 화면 -->
+<div class="card" id="login">
+  <h2>🎮 멀티플레이 게임</h2>
+  <input id="name" type="text" placeholder="닉네임 입력" maxlength="12">
+  <button id="createRoomBtn">방 만들기 (2~4인)</button>
+  <hr>
+  <input id="joinCode" type="text" inputmode="numeric" maxlength="6" placeholder="방번호 6자리">
+  <button id="joinRoomBtn">방 참가하기</button>
+</div>
+
+<!-- 2. 대기실 화면 -->
+<div class="card" id="lobby">
+  <h3>대기실</h3>
+  <div class="room-code" id="roomNo">------</div>
+  
+  <div class="player-list" id="playerList"></div>
+
+  <button id="readyBtn" class="ready-btn">준비 (Ready)</button>
+  <button id="startBtn" style="display: none;">게임 시작</button>
+  <button id="leaveBtn" class="leave-btn">방 나가기</button>
+</div>
+
+<!-- 3. 게임 화면 (게임별 구현 영역) -->
+<div class="card" id="game">
+  <h3>게임 진행 중</h3>
+  <div id="gameCanvas">게임 화면 영역 (여기에 커스텀 게임 제작)</div>
+  <button id="exitGameBtn" class="leave-btn">게임 종료 및 대기실 복귀</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import {
+  getFirestore, doc, setDoc, getDoc, getDocs, deleteDoc,
+  collection, query, onSnapshot, serverTimestamp, updateDoc
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCzpHiT-TYIgIZ8quOjMM9dBgf8sIJnVIo",
+  authDomain: "test-1f1f7.firebaseapp.com",
+  projectId: "test-1f1f7",
+  storageBucket: "test-1f1f7.firebasestorage.app",
+  messagingSenderId: "51206027214",
+  appId: "1:51206027214:web:da9406137e4fe6ac7bdd9f"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// 상태 변수
+let roomId = "";
+let myId = "";
+let myName = "";
+let isHost = false;
+let isReady = false;
+
+let unsubscribeRoom = null;
+let unsubscribePlayers = null;
+
+// DOM 요소
+const loginCard = document.getElementById("login");
+const lobbyCard = document.getElementById("lobby");
+const gameCard = document.getElementById("game");
+
+const nameInput = document.getElementById("name");
+const joinCodeInput = document.getElementById("joinCode");
+const roomNoElem = document.getElementById("roomNo");
+const playerListElem = document.getElementById("playerList");
+
+const createRoomBtn = document.getElementById("createRoomBtn");
+const joinRoomBtn = document.getElementById("joinRoomBtn");
+const readyBtn = document.getElementById("readyBtn");
+const startBtn = document.getElementById("startBtn");
+const leaveBtn = document.getElementById("leaveBtn");
+const exitGameBtn = document.getElementById("exitGameBtn");
+
+/* ==========================================
+   유틸리티: 방 cleanup (32개 제한 + 1시간 미활동)
+========================================== */
+async function cleanupRooms() {
+  try {
+    const snap = await getDocs(collection(db, "game_rooms"));
+    const now = Date.now();
+    const ONE_HOUR = 60 * 60 * 1000;
+    let list = [];
+
+    snap.forEach(d => {
+      const data = d.data();
+      const lastActive = data.lastActive ? data.lastActive.toMillis() : now;
+      list.push({ id: d.id, lastActive });
+    });
+
+    for (const r of list) {
+      if (now - r.lastActive > ONE_HOUR) await deleteRoom(r.id);
+    }
+
+    const updatedSnap = await getDocs(collection(db, "game_rooms"));
+    let remaining = [];
+    updatedSnap.forEach(d => remaining.push({ id: d.id, lastActive: d.data().lastActive?.toMillis() || now }));
+
+    if (remaining.length >= 32) {
+      remaining.sort((a, b) => a.lastActive - b.lastActive);
+      for (let i = 0; i < remaining.length - 31; i++) {
+        await deleteRoom(remaining[i].id);
+      }
+    }
+  } catch (e) { console.error("Cleanup error:", e); }
+}
+
+async function deleteRoom(rId) {
+  const pSnap = await getDocs(collection(db, "game_rooms", rId, "players"));
+  for (const p of pSnap.docs) await deleteDoc(p.ref);
+  await deleteDoc(doc(db, "game_rooms", rId));
+}
+
+/* ==========================================
+   1. 방 만들기
+========================================== */
+createRoomBtn.addEventListener("click", async () => {
+  myName = nameInput.value.trim();
+  if (!myName) return alert("닉네임을 입력하세요.");
+
+  createRoomBtn.disabled = true;
+  await cleanupRooms();
+
+  roomId = Math.floor(100000 + Math.random() * 900000).toString();
+  myId = "p_" + Date.now();
+  isHost = true;
+
+  // 방 생성
+  await setDoc(doc(db, "game_rooms", roomId), {
+    status: "waiting", // waiting | playing
+    hostId: myId,
+    created: serverTimestamp(),
+    lastActive: serverTimestamp()
+  });
+
+  // 호스트 플레이어 추가
+  await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
+    name: myName,
+    isHost: true,
+    isReady: true, // 방장은 기본 Ready
+    joinedAt: serverTimestamp()
+  });
+
+  enterLobby();
+  createRoomBtn.disabled = false;
+});
+
+/* ==========================================
+   2. 방 참가하기
+========================================== */
+joinRoomBtn.addEventListener("click", async () => {
+  myName = nameInput.value.trim();
+  roomId = joinCodeInput.value.trim();
+
+  if (!myName) return alert("닉네임을 입력하세요.");
+  if (!/^\d{6}$/.test(roomId)) return alert("6자리 방번호를 입력하세요.");
+
+  joinRoomBtn.disabled = true;
+  await cleanupRooms();
+
+  const roomRef = doc(db, "game_rooms", roomId);
+  const roomSnap = await getDoc(roomRef);
+
+  if (!roomSnap.exists()) {
+    joinRoomBtn.disabled = false;
+    return alert("존재하지 않는 방입니다.");
+  }
+
+  if (roomSnap.data().status !== "waiting") {
+    joinRoomBtn.disabled = false;
+    return alert("이미 게임이 진행 중인 방입니다.");
+  }
+
+  // 인원 수 체크 (최대 4명)
+  const playersSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
+  if (playersSnap.size >= 4) {
+    joinRoomBtn.disabled = false;
+    return alert("방이 가득 차서 입장할 수 없습니다. (최대 4인)");
+  }
+
+  myId = "p_" + Date.now();
+  isHost = false;
+  isReady = false;
+
+  await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
+    name: myName,
+    isHost: false,
+    isReady: false,
+    joinedAt: serverTimestamp()
+  });
+
+  await updateDoc(roomRef, { lastActive: serverTimestamp() });
+
+  enterLobby();
+  joinRoomBtn.disabled = false;
+});
+
+/* ==========================================
+   3. 대기실 로직 & 실시간 동기화
+========================================== */
+function enterLobby() {
+  loginCard.style.display = "none";
+  gameCard.style.display = "none";
+  lobbyCard.style.display = "block";
+  roomNoElem.textContent = roomId;
+
+  if (isHost) {
+    readyBtn.style.display = "none";
+    startBtn.style.display = "block";
+  } else {
+    readyBtn.style.display = "block";
+    startBtn.style.display = "none";
+  }
+
+  // 방 상태 감시 (게임 시작 여부)
+  unsubscribeRoom = onSnapshot(doc(db, "game_rooms", roomId), (snap) => {
+    if (!snap.exists()) {
+      alert("방이 삭제되었습니다.");
+      leaveRoom();
+      return;
+    }
+    const data = snap.data();
+    if (data.status === "playing") {
+      startGameUI();
+    }
+  });
+
+  // 플레이어 목록 감시
+  const playersQuery = collection(db, "game_rooms", roomId, "players");
+  unsubscribePlayers = onSnapshot(playersQuery, (snap) => {
+    playerListElem.innerHTML = "";
+    let players = [];
+
+    snap.forEach(d => players.push({ id: d.id, ...d.data() }));
+
+    let allReady = true;
+    
+    players.forEach(p => {
+      const isMe = p.id === myId;
+      if (!p.isReady) allReady = false;
+
+      const item = document.createElement("div");
+      item.className = "player-item" + (isMe ? " is-me" : "");
+      
+      item.innerHTML = `
+        <div>
+          <strong>${p.name}</strong>
+          ${p.isHost ? '<span class="tag host">방장</span>' : ''}
+          ${isMe ? '<span class="tag">나</span>' : ''}
+        </div>
+        <div class="${p.isReady ? 'badge-ready' : 'badge-waiting'}">
+          ${p.isReady ? 'READY' : '대기중'}
+        </div>
+      `;
+      playerListElem.appendChild(item);
+    });
+
+    // 방장 조건 체크: 2인 이상 모였고 방장 제외 전원 Ready일 때 시작 버튼 활성화
+    if (isHost) {
+      const readyToStart = players.length >= 2 && allReady;
+      startBtn.disabled = !readyToStart;
+    }
+  });
+}
+
+/* ==========================================
+   4. Ready & Start 핸들러
+========================================== */
+readyBtn.addEventListener("click", async () => {
+  isReady = !isReady;
+  readyBtn.textContent = isReady ? "준비 취소" : "준비 (Ready)";
+  readyBtn.classList.toggle("is-ready", isReady);
+
+  await updateDoc(doc(db, "game_rooms", roomId, "players", myId), {
+    isReady: isReady
+  });
+});
+
+startBtn.addEventListener("click", async () => {
+  await updateDoc(doc(db, "game_rooms", roomId), {
+    status: "playing",
+    lastActive: serverTimestamp()
+  });
+});
+
+/* ==========================================
+   5. 게임 화면 전환 및 확장 포인트
+========================================== */
+function startGameUI() {
+  lobbyCard.style.display = "none";
+  gameCard.style.display = "block";
+
+  // TODO: 여기에 개별 게임 초기화 함수 호출
+  initCustomGame();
+}
+
+function initCustomGame() {
+  const canvas = document.getElementById("gameCanvas");
+  canvas.innerHTML = `🎮 게임 시작! (방번호: ${roomId})<br>나의 ID: ${myId}`;
+  
+  // Custom Game Logic Here!
+  // 예: 실시간 위치 전송, 카드 나누기, 턴 제어 등
+}
+
+/* ==========================================
+   6. 퇴장 및 정리
+========================================== */
+async function leaveRoom() {
+  if (unsubscribeRoom) unsubscribeRoom();
+  if (unsubscribePlayers) unsubscribePlayers();
+
+  if (roomId && myId) {
+    try {
+      await deleteDoc(doc(db, "game_rooms", roomId, "players", myId));
+      
+      // 인원이 남아있는지 확인 후 0명이면 방 삭제
+      const pSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
+      if (pSnap.empty) {
+        await deleteDoc(doc(db, "game_rooms", roomId));
+      } else if (isHost) {
+        // 방장이 나가면 다음 플레이어에게 방장 위임
+        const nextHost = pSnap.docs[0];
+        await updateDoc(doc(db, "game_rooms", roomId), { hostId: nextHost.id });
+        await updateDoc(doc(db, "game_rooms", roomId, "players", nextHost.id), {
+          isHost: true,
+          isReady: true
+        });
+      }
+    } catch (e) { console.error("Exit error:", e); }
+  }
+
+  roomId = ""; myId = ""; isHost = false; isReady = false;
+  loginCard.style.display = "block";
+  lobbyCard.style.display = "none";
+  gameCard.style.display = "none";
+}
+
+leaveBtn.addEventListener("click", leaveRoom);
+exitGameBtn.addEventListener("click", async () => {
+  // 게임 종료 시 다시 대기실로 복귀
+  if (isHost) {
+    await updateDoc(doc(db, "game_rooms", roomId), { status: "waiting" });
+  } else {
+    leaveRoom();
+  }
+});
+
+joinCodeInput.addEventListener("input", function() {
+  this.value = this.value.replace(/\D/g, "").slice(0, 6);
+});
+</script>
+</body>
+</html>
