@@ -4,914 +4,142 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<title>Room Chat</title>
+<title>My Apps</title>
 
 <style>
+
 * {
   box-sizing: border-box;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  max-width: 700px;
-  margin: 0 auto;
-  padding: 20px 12px;
+  margin: 0;
+  padding: 30px 16px;
+
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
   background: #f5f5f5;
 }
 
-.card {
-  background: white;
-  padding: 20px;
-  border-radius: 14px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+.container {
+  max-width: 600px;
+  margin: 0 auto;
 }
 
-h2 {
+h1 {
   text-align: center;
-  margin-top: 0;
+  margin: 10px 0 30px;
 }
 
-input {
-  width: 100%;
-  padding: 13px;
-  margin: 6px 0;
-  font-size: 16px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
+/* 버튼 4개 영역 */
+
+.menu {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, 1fr);
+
+  gap: 16px;
 }
 
-button {
-  width: 100%;
-  padding: 13px;
-  margin: 6px 0;
-  font-size: 16px;
-  border: none;
-  border-radius: 8px;
-  background: #2563eb;
-  color: white;
-  cursor: pointer;
-}
+/* 사각형 버튼 */
 
-button:active {
-  opacity: 0.7;
-}
+.menu-button {
 
-hr {
-  border: none;
-  border-top: 1px solid #ddd;
-  margin: 20px 0;
-}
+  aspect-ratio: 1 / 1;
 
-#chat {
-  display: none;
-}
-
-.room {
-  text-align: center;
-  font-size: 22px;
-  font-weight: bold;
-  margin-bottom: 15px;
-}
-
-.room-number {
-  color: #2563eb;
-  font-size: 30px;
-  letter-spacing: 3px;
-}
-
-#messages {
-  height: 360px;
-  overflow-y: auto;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 10px;
-  background: #fafafa;
-  margin-bottom: 10px;
-}
-
-.msg {
-  margin: 10px 0;
-  padding: 9px 12px;
-  background: white;
-  border-radius: 10px;
-  border: 1px solid #eee;
-}
-
-.mine {
-  text-align: right;
-  background: #e8f0ff;
-}
-
-.msg-name {
-  font-size: 13px;
-  font-weight: bold;
-  margin-bottom: 3px;
-}
-
-.msg-text {
-  font-size: 16px;
-  word-break: break-word;
-}
-
-.send-area {
   display: flex;
-  gap: 6px;
+
+  align-items: center;
+  justify-content: center;
+
+  text-decoration: none;
+
+  background: white;
+
+  border-radius: 16px;
+
+  border: 1px solid #ddd;
+
+  box-shadow:
+    0 3px 8px rgba(0,0,0,0.08);
+
+  font-size: 22px;
+
+  font-weight: 600;
+
+  color: #222;
+
+  transition:
+    transform 0.1s,
+    box-shadow 0.1s;
 }
 
-.send-area input {
-  flex: 1;
+.menu-button:active {
+
+  transform: scale(0.97);
+
+  box-shadow:
+    0 1px 4px rgba(0,0,0,0.08);
 }
 
-.send-area button {
-  width: 80px;
-}
-
-.status {
-  margin-top: 10px;
-  padding: 10px;
-  border-radius: 8px;
-  background: #f1f5f9;
-  font-size: 13px;
-  color: #475569;
-  display: none;
-}
-
-.leave-button {
-  background: #64748b;
-  margin-top: 15px;
-}
 </style>
+
 </head>
 
 <body>
 
-<!-- =========================
-     로그인 / 방 입장 화면
-========================= -->
+<div class="container">
 
-<div class="card" id="login">
+  <h1>My Apps</h1>
 
-  <h2>💬 Room Chat</h2>
+  <div class="menu">
 
-  <input
-    id="name"
-    type="text"
-    placeholder="닉네임"
-    maxlength="20"
-  >
-
-  <button id="createRoomButton">
-    방 만들기
-  </button>
-
-  <hr>
-
-  <input
-    id="joinCode"
-    type="text"
-    inputmode="numeric"
-    maxlength="6"
-    placeholder="방번호 6자리"
-  >
-
-  <button id="joinRoomButton">
-    방 참가
-  </button>
-
-  <div id="status" class="status"></div>
-
-</div>
-
-
-<!-- =========================
-     채팅 화면
-========================= -->
-
-<div class="card" id="chat">
-
-  <div class="room">
-    방번호<br>
-    <span class="room-number" id="roomNo"></span>
-  </div>
-
-  <div id="messages"></div>
-
-  <div class="send-area">
-
-    <input
-      id="text"
-      type="text"
-      placeholder="메시지를 입력하세요"
-      maxlength="500"
+    <!-- 1번 -->
+    <a
+      class="menu-button"
+      href="chat1.html"
     >
+      Chat
+    </a>
 
-    <button id="sendButton">
-      전송
-    </button>
+
+    <!-- 2번 -->
+    <a
+      class="menu-button"
+      href="#"
+      onclick="return false;"
+    >
+      준비중
+    </a>
+
+
+    <!-- 3번 -->
+    <a
+      class="menu-button"
+      href="#"
+      onclick="return false;"
+    >
+      준비중
+    </a>
+
+
+    <!-- 4번 -->
+    <a
+      class="menu-button"
+      href="#"
+      onclick="return false;"
+    >
+      준비중
+    </a>
 
   </div>
 
-  <button
-    id="leaveButton"
-    class="leave-button"
-  >
-    방 나가기
-  </button>
-
 </div>
-
-
-<script type="module">
-
-/* ==========================================
-   Firebase
-========================================== */
-
-import {
-  initializeApp
-} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-
-import {
-  getFirestore,
-  doc,
-  setDoc,
-  getDoc,
-  collection,
-  addDoc,
-  query,
-  orderBy,
-  onSnapshot,
-  serverTimestamp
-} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
-
-
-/* ==========================================
-   Firebase 설정
-========================================== */
-
-const firebaseConfig = {
-
-  apiKey: "AIzaSyCzpHiT-TYIgIZ8quOjMM9dBgf8sIJnVIo",
-
-  authDomain: "test-1f1f7.firebaseapp.com",
-
-  projectId: "test-1f1f7",
-
-  storageBucket: "test-1f1f7.firebasestorage.app",
-
-  messagingSenderId: "51206027214",
-
-  appId: "1:51206027214:web:da9406137e4fe6ac7bdd9f"
-
-};
-
-
-/* ==========================================
-   Firebase 초기화
-========================================== */
-
-let app;
-let db;
-
-try {
-
-  app = initializeApp(firebaseConfig);
-
-  db = getFirestore(app);
-
-  console.log("Firebase 초기화 성공");
-
-} catch (error) {
-
-  console.error("Firebase 초기화 실패:", error);
-
-  alert(
-    "Firebase 초기화에 실패했습니다.\n\n" +
-    error.message
-  );
-
-}
-
-
-/* ==========================================
-   HTML 요소
-========================================== */
-
-const loginElement =
-  document.getElementById("login");
-
-const chatElement =
-  document.getElementById("chat");
-
-const nameElement =
-  document.getElementById("name");
-
-const joinCodeElement =
-  document.getElementById("joinCode");
-
-const roomNoElement =
-  document.getElementById("roomNo");
-
-const messagesElement =
-  document.getElementById("messages");
-
-const textElement =
-  document.getElementById("text");
-
-const statusElement =
-  document.getElementById("status");
-
-const createRoomButton =
-  document.getElementById("createRoomButton");
-
-const joinRoomButton =
-  document.getElementById("joinRoomButton");
-
-const sendButton =
-  document.getElementById("sendButton");
-
-const leaveButton =
-  document.getElementById("leaveButton");
-
-
-/* ==========================================
-   현재 사용자 정보
-========================================== */
-
-let room = "";
-
-let nickname = "";
-
-let unsubscribeMessages = null;
-
-
-/* ==========================================
-   상태 메시지
-========================================== */
-
-function showStatus(message) {
-
-  statusElement.textContent = message;
-
-  statusElement.style.display = "block";
-
-}
-
-
-/* ==========================================
-   방 만들기
-========================================== */
-
-createRoomButton.addEventListener(
-  "click",
-  async function() {
-
-    nickname =
-      nameElement.value.trim();
-
-    if (!nickname) {
-
-      alert("닉네임을 입력해주세요.");
-
-      nameElement.focus();
-
-      return;
-    }
-
-
-    if (!db) {
-
-      alert("Firebase가 초기화되지 않았습니다.");
-
-      return;
-    }
-
-
-    createRoomButton.disabled = true;
-
-    createRoomButton.textContent =
-      "방 만드는 중...";
-
-
-    try {
-
-      /*
-       * 6자리 방번호 생성
-       */
-
-      room =
-        Math.floor(
-          100000 +
-          Math.random() * 900000
-        ).toString();
-
-
-      /*
-       * Firebase Firestore에
-       * 방 생성
-       */
-
-      await setDoc(
-        doc(db, "rooms", room),
-        {
-          created: serverTimestamp(),
-          host: nickname
-        }
-      );
-
-
-      console.log(
-        "방 생성 성공:",
-        room
-      );
-
-
-      /*
-       * 채팅 화면으로 이동
-       */
-
-      enterRoom();
-
-
-    } catch (error) {
-
-      console.error(
-        "방 생성 오류:",
-        error
-      );
-
-      alert(
-        "방 만들기에 실패했습니다.\n\n" +
-        error.code +
-        "\n\n" +
-        error.message
-      );
-
-
-    } finally {
-
-      createRoomButton.disabled = false;
-
-      createRoomButton.textContent =
-        "방 만들기";
-
-    }
-
-  }
-);
-
-
-/* ==========================================
-   방 참가
-========================================== */
-
-joinRoomButton.addEventListener(
-  "click",
-  async function() {
-
-    nickname =
-      nameElement.value.trim();
-
-    room =
-      joinCodeElement.value.trim();
-
-
-    if (!nickname) {
-
-      alert("닉네임을 입력해주세요.");
-
-      nameElement.focus();
-
-      return;
-    }
-
-
-    if (!/^\d{6}$/.test(room)) {
-
-      alert(
-        "방번호는 6자리 숫자입니다."
-      );
-
-      joinCodeElement.focus();
-
-      return;
-    }
-
-
-    if (!db) {
-
-      alert(
-        "Firebase가 초기화되지 않았습니다."
-      );
-
-      return;
-    }
-
-
-    joinRoomButton.disabled = true;
-
-    joinRoomButton.textContent =
-      "확인 중...";
-
-
-    try {
-
-      /*
-       * Firebase에서 방 확인
-       */
-
-      const roomReference =
-        doc(db, "rooms", room);
-
-      const roomSnapshot =
-        await getDoc(roomReference);
-
-
-      if (!roomSnapshot.exists()) {
-
-        alert(
-          "존재하지 않는 방입니다."
-        );
-
-        return;
-      }
-
-
-      console.log(
-        "방 참가 성공:",
-        room
-      );
-
-
-      /*
-       * 채팅 화면으로 이동
-       */
-
-      enterRoom();
-
-
-    } catch (error) {
-
-      console.error(
-        "방 참가 오류:",
-        error
-      );
-
-      alert(
-        "방 참가에 실패했습니다.\n\n" +
-        error.code +
-        "\n\n" +
-        error.message
-      );
-
-
-    } finally {
-
-      joinRoomButton.disabled = false;
-
-      joinRoomButton.textContent =
-        "방 참가";
-
-    }
-
-  }
-);
-
-
-/* ==========================================
-   채팅방 입장
-========================================== */
-
-function enterRoom() {
-
-  loginElement.style.display =
-    "none";
-
-  chatElement.style.display =
-    "block";
-
-  roomNoElement.textContent =
-    room;
-
-  messagesElement.innerHTML = "";
-
-  showStatus(
-    "Firebase 연결됨"
-  );
-
-
-  /*
-   * 해당 방의 메시지 가져오기
-   */
-
-  const messagesReference =
-    collection(
-      db,
-      "rooms",
-      room,
-      "messages"
-    );
-
-
-  const messagesQuery =
-    query(
-      messagesReference,
-      orderBy("time")
-    );
-
-
-  /*
-   * 실시간 감시
-   */
-
-  unsubscribeMessages =
-    onSnapshot(
-      messagesQuery,
-
-      function(snapshot) {
-
-        messagesElement.innerHTML = "";
-
-
-        snapshot.forEach(
-          function(messageDocument) {
-
-            const message =
-              messageDocument.data();
-
-
-            const messageElement =
-              document.createElement("div");
-
-
-            messageElement.className =
-              "msg";
-
-
-            if (
-              message.name === nickname
-            ) {
-
-              messageElement.classList.add(
-                "mine"
-              );
-
-            }
-
-
-            const nameDiv =
-              document.createElement("div");
-
-            nameDiv.className =
-              "msg-name";
-
-            nameDiv.textContent =
-              message.name || "익명";
-
-
-            const textDiv =
-              document.createElement("div");
-
-            textDiv.className =
-              "msg-text";
-
-            /*
-             * innerHTML 대신 textContent 사용
-             * → HTML 삽입 공격 방지
-             */
-
-            textDiv.textContent =
-              message.text || "";
-
-
-            messageElement.appendChild(
-              nameDiv
-            );
-
-            messageElement.appendChild(
-              textDiv
-            );
-
-
-            messagesElement.appendChild(
-              messageElement
-            );
-
-          }
-        );
-
-
-        /*
-         * 가장 최근 메시지로 이동
-         */
-
-        messagesElement.scrollTop =
-          messagesElement.scrollHeight;
-
-      },
-
-      function(error) {
-
-        console.error(
-          "메시지 실시간 연결 오류:",
-          error
-        );
-
-        alert(
-          "채팅 연결 오류\n\n" +
-          error.code +
-          "\n\n" +
-          error.message
-        );
-
-      }
-    );
-
-
-  textElement.focus();
-
-}
-
-
-/* ==========================================
-   메시지 보내기
-========================================== */
-
-sendButton.addEventListener(
-  "click",
-  sendMessage
-);
-
-
-async function sendMessage() {
-
-  const messageText =
-    textElement.value.trim();
-
-
-  if (!messageText) {
-
-    return;
-  }
-
-
-  if (!room) {
-
-    alert(
-      "채팅방에 먼저 입장해주세요."
-    );
-
-    return;
-  }
-
-
-  sendButton.disabled = true;
-
-
-  try {
-
-    await addDoc(
-
-      collection(
-        db,
-        "rooms",
-        room,
-        "messages"
-      ),
-
-      {
-        name: nickname,
-
-        text: messageText,
-
-        time: serverTimestamp()
-      }
-
-    );
-
-
-    /*
-     * 입력창 비우기
-     */
-
-    textElement.value = "";
-
-    textElement.focus();
-
-
-  } catch (error) {
-
-    console.error(
-      "메시지 전송 오류:",
-      error
-    );
-
-    alert(
-      "메시지 전송 실패\n\n" +
-      error.code +
-      "\n\n" +
-      error.message
-    );
-
-
-  } finally {
-
-    sendButton.disabled = false;
-
-  }
-
-}
-
-
-/* ==========================================
-   Enter 키로 메시지 전송
-========================================== */
-
-textElement.addEventListener(
-  "keydown",
-  function(event) {
-
-    if (event.key === "Enter") {
-
-      event.preventDefault();
-
-      sendMessage();
-
-    }
-
-  }
-);
-
-
-/* ==========================================
-   방 나가기
-========================================== */
-
-leaveButton.addEventListener(
-  "click",
-  function() {
-
-    /*
-     * 실시간 감시 해제
-     */
-
-    if (unsubscribeMessages) {
-
-      unsubscribeMessages();
-
-      unsubscribeMessages = null;
-
-    }
-
-
-    room = "";
-
-    nickname = "";
-
-
-    messagesElement.innerHTML = "";
-
-    textElement.value = "";
-
-    roomNoElement.textContent = "";
-
-
-    chatElement.style.display =
-      "none";
-
-    loginElement.style.display =
-      "block";
-
-
-    statusElement.style.display =
-      "none";
-
-  }
-);
-
-
-/* ==========================================
-   방번호 입력 시 숫자만 허용
-========================================== */
-
-joinCodeElement.addEventListener(
-  "input",
-  function() {
-
-    this.value =
-      this.value
-        .replace(/\D/g, "")
-        .slice(0, 6);
-
-  }
-);
-
-
-console.log(
-  "Room Chat 준비 완료"
-);
-
-</script>
 
 </body>
 </html>
