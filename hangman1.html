@@ -1,1 +1,938 @@
-hangman
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Network Hangman Game</title>
+
+<style>
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 20px 12px;
+  background: #f1f5f9;
+}
+.card {
+  background: white;
+  padding: 24px;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  margin-bottom: 20px;
+}
+h2, h3 { text-align: center; margin-top: 0; }
+input, select {
+  width: 100%;
+  padding: 12px;
+  margin: 6px 0;
+  font-size: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+}
+button {
+  width: 100%;
+  padding: 12px;
+  margin: 6px 0;
+  font-size: 16px;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+button:disabled { background: #94a3b8; cursor: not-allowed; }
+button:active:not(:disabled) { opacity: 0.8; }
+hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
+
+#lobby, #game { display: none; }
+
+.room-code {
+  text-align: center;
+  font-size: 28px;
+  font-weight: bold;
+  color: #2563eb;
+  letter-spacing: 2px;
+  margin: 10px 0;
+}
+
+.player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 20px 0;
+}
+.player-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.player-item.is-me { border-color: #2563eb; background: #eff6ff; }
+.player-item.turn { border: 2px solid #eab308; background: #fefce8; }
+.tag {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #cbd5e1;
+  color: #334155;
+  margin-left: 6px;
+}
+.tag.host { background: #fef08a; color: #854d0e; }
+.badge-ready { font-weight: bold; color: #16a34a; }
+.badge-waiting { color: #94a3b8; }
+
+.leave-btn { background: #64748b; margin-top: 10px; }
+.ready-btn { background: #16a34a; }
+.ready-btn.is-ready { background: #dc2626; }
+
+/* 행맨 게임 전용 스타일 */
+.game-status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #e2e8f0;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: bold;
+  margin-bottom: 15px;
+}
+
+.word-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  min-height: 80px;
+  background: #0f172a;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 15px;
+}
+
+.letter-box {
+  width: 36px;
+  height: 48px;
+  border-bottom: 4px solid #ffffff;
+  color: white;
+  font-size: 28px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.letter-box.space {
+  border-bottom: none;
+  width: 20px;
+}
+
+.hint-box {
+  background: #fef3c7;
+  border: 1px solid #fde047;
+  color: #854d0e;
+  padding: 12px;
+  border-radius: 8px;
+  text-align: center;
+  margin-bottom: 15px;
+  font-weight: 500;
+}
+
+.keyboard-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 15px;
+}
+.key-btn {
+  padding: 10px 0;
+  font-size: 16px;
+  background: #3b82f6;
+  border-radius: 6px;
+}
+.key-btn:disabled {
+  background: #cbd5e1;
+  color: #64748b;
+}
+
+.full-guess-area {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 15px;
+}
+.full-guess-area input { margin: 0; }
+.full-guess-area button { width: 100px; margin: 0; }
+
+.history-box {
+  font-size: 13px;
+  color: #64748b;
+  background: #f8fafc;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.leaderboard {
+  margin: 15px 0;
+}
+.rank-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 18px;
+}
+.rank-1 { font-weight: bold; color: #eab308; }
+.rank-2 { font-weight: bold; color: #94a3b8; }
+.rank-3 { font-weight: bold; color: #b45309; }
+</style>
+</head>
+
+<body>
+
+<!-- 1. 메인 로그인 화면 -->
+<div class="card" id="login">
+  <h2>🔤 네트워크 행맨 게임</h2>
+  <input id="name" type="text" placeholder="닉네임 입력" maxlength="12">
+  <button id="createRoomBtn">방 만들기 (2~4인)</button>
+  <hr>
+  <input id="joinCode" type="text" inputmode="numeric" maxlength="6" placeholder="방번호 6자리">
+  <button id="joinRoomBtn">방 참가하기</button>
+</div>
+
+<!-- 2. 대기실 화면 -->
+<div class="card" id="lobby">
+  <h3>대기실</h3>
+  <div class="room-code" id="roomNo">------</div>
+  
+  <div id="hostSettings" style="display: none; margin: 15px 0;">
+    <label for="roundSelect"><strong>🎯 총 라운드 수 설정:</strong></label>
+    <select id="roundSelect">
+      <option value="1">1 라운드</option>
+      <option value="2">2 라운드</option>
+      <option value="3" selected>3 라운드</option>
+      <option value="5">5 라운드</option>
+    </select>
+  </div>
+
+  <div class="player-list" id="playerList"></div>
+
+  <button id="readyBtn" class="ready-btn">준비 (Ready)</button>
+  <button id="startBtn" style="display: none;">게임 시작</button>
+  <button id="leaveBtn" class="leave-btn">방 나가기</button>
+</div>
+
+<!-- 3. 게임 화면 -->
+<div class="card" id="game">
+  <div class="game-status-bar">
+    <span id="roundInfo">Round 1 / 3</span>
+    <span id="turnInfo">출제 중...</span>
+  </div>
+
+  <!-- 플레이어 점수 및 차례 목록 -->
+  <div class="player-list" id="gamePlayerList" style="margin: 10px 0;"></div>
+
+  <!-- 💡 [A] 출제자 입력 화면 -->
+  <div id="makerArea" style="display: none;">
+    <h3>✏️ 문제를 출제하세요 (영문만 가능)</h3>
+    <input id="secretWordInput" type="text" placeholder="단어/문장 입력 (예: APPLE, HELLO WORLD)" maxlength="30">
+    <input id="hintInput" type="text" placeholder="추가 힌트 문장 (선택)" maxlength="50">
+    <button id="submitWordBtn">문제 제출하기</button>
+  </div>
+
+  <!-- 🔍 [B] 정답 맞추기 화면 -->
+  <div id="guesserArea" style="display: none;">
+    <div class="hint-box" id="hintDisplay">💡 힌트: 없음</div>
+    
+    <div class="word-display" id="wordDisplay"></div>
+
+    <!-- 알파벳 패드 -->
+    <div class="keyboard-grid" id="keyboard"></div>
+
+    <!-- 단어 전체 정답 맞추기 -->
+    <div class="full-guess-area">
+      <input id="fullWordInput" type="text" placeholder="단어 전체 정답 입력" maxlength="30">
+      <input type="hidden" id="fullWordInputDummy">
+      <button id="submitFullWordBtn">정답 제출</button>
+    </div>
+
+    <div class="history-box" id="historyDisplay">시도한 알파벳: 없음</div>
+  </div>
+
+  <!-- 🏆 [C] 최종 결과 및 순위표 화면 -->
+  <div id="resultArea" style="display: none;">
+    <h3>🏆 최종 게임 결과 🏆</h3>
+    <div class="leaderboard" id="leaderboard"></div>
+    <button id="backToLobbyBtn">대기실로 복귀</button>
+  </div>
+
+  <button id="exitGameBtn" class="leave-btn">게임 나가기</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import {
+  getFirestore, doc, setDoc, getDoc, getDocs, deleteDoc,
+  collection, query, onSnapshot, serverTimestamp, updateDoc
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCzpHiT-TYIgIZ8quOjMM9dBgf8sIJnVIo",
+  authDomain: "test-1f1f7.firebaseapp.com",
+  projectId: "test-1f1f7",
+  storageBucket: "test-1f1f7.firebasestorage.app",
+  messagingSenderId: "51206027214",
+  appId: "1:51206027214:web:da9406137e4fe6ac7bdd9f"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// 상태 변수
+let roomId = "";
+let myId = "";
+let myName = "";
+let isHost = false;
+let isReady = false;
+
+let unsubscribeRoom = null;
+let unsubscribePlayers = null;
+
+// DOM 요소
+const loginCard = document.getElementById("login");
+const lobbyCard = document.getElementById("lobby");
+const gameCard = document.getElementById("game");
+
+const nameInput = document.getElementById("name");
+const joinCodeInput = document.getElementById("joinCode");
+const roomNoElem = document.getElementById("roomNo");
+const playerListElem = document.getElementById("playerList");
+
+const createRoomBtn = document.getElementById("createRoomBtn");
+const joinRoomBtn = document.getElementById("joinRoomBtn");
+const readyBtn = document.getElementById("readyBtn");
+const startBtn = document.getElementById("startBtn");
+const leaveBtn = document.getElementById("leaveBtn");
+
+const hostSettings = document.getElementById("hostSettings");
+const roundSelect = document.getElementById("roundSelect");
+
+// 게임 진행 DOM 요소
+const roundInfo = document.getElementById("roundInfo");
+const turnInfo = document.getElementById("turnInfo");
+const gamePlayerList = document.getElementById("gamePlayerList");
+
+const makerArea = document.getElementById("makerArea");
+const secretWordInput = document.getElementById("secretWordInput");
+const hintInput = document.getElementById("hintInput");
+const submitWordBtn = document.getElementById("submitWordBtn");
+
+const guesserArea = document.getElementById("guesserArea");
+const hintDisplay = document.getElementById("hintDisplay");
+const wordDisplay = document.getElementById("wordDisplay");
+const keyboard = document.getElementById("keyboard");
+const fullWordInput = document.getElementById("fullWordInput");
+const submitFullWordBtn = document.getElementById("submitFullWordBtn");
+const historyDisplay = document.getElementById("historyDisplay");
+
+const resultArea = document.getElementById("resultArea");
+const leaderboard = document.getElementById("leaderboard");
+const backToLobbyBtn = document.getElementById("backToLobbyBtn");
+const exitGameBtn = document.getElementById("exitGameBtn");
+
+/* ==========================================
+   유틸리티: 방 cleanup (32개 제한 + 1시간 미활동)
+========================================== */
+async function cleanupRooms() {
+  try {
+    const snap = await getDocs(collection(db, "game_rooms"));
+    const now = Date.now();
+    const ONE_HOUR = 60 * 60 * 1000;
+    let list = [];
+
+    snap.forEach(d => {
+      const data = d.data();
+      const lastActive = data.lastActive ? data.lastActive.toMillis() : now;
+      list.push({ id: d.id, lastActive });
+    });
+
+    for (const r of list) {
+      if (now - r.lastActive > ONE_HOUR) await deleteRoom(r.id);
+    }
+
+    const updatedSnap = await getDocs(collection(db, "game_rooms"));
+    let remaining = [];
+    updatedSnap.forEach(d => remaining.push({ id: d.id, lastActive: d.data().lastActive?.toMillis() || now }));
+
+    if (remaining.length >= 32) {
+      remaining.sort((a, b) => a.lastActive - b.lastActive);
+      for (let i = 0; i < remaining.length - 31; i++) {
+        await deleteRoom(remaining[i].id);
+      }
+    }
+  } catch (e) { console.error("Cleanup error:", e); }
+}
+
+async function deleteRoom(rId) {
+  const pSnap = await getDocs(collection(db, "game_rooms", rId, "players"));
+  for (const p of pSnap.docs) await deleteDoc(p.ref);
+  await deleteDoc(doc(db, "game_rooms", rId));
+}
+
+/* ==========================================
+   1. 방 만들기 & 참가
+========================================== */
+createRoomBtn.addEventListener("click", async () => {
+  myName = nameInput.value.trim();
+  if (!myName) return alert("닉네임을 입력하세요.");
+
+  createRoomBtn.disabled = true;
+  await cleanupRooms();
+
+  roomId = Math.floor(100000 + Math.random() * 900000).toString();
+  myId = "p_" + Date.now();
+  isHost = true;
+
+  await setDoc(doc(db, "game_rooms", roomId), {
+    status: "waiting",
+    hostId: myId,
+    totalRounds: 3,
+    currentRound: 1,
+    turnIndex: 0,
+    guesserTurnIndex: 0,
+    created: serverTimestamp(),
+    lastActive: serverTimestamp()
+  });
+
+  await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
+    name: myName,
+    isHost: true,
+    isReady: true,
+    score: 0,
+    joinedAt: serverTimestamp()
+  });
+
+  enterLobby();
+  createRoomBtn.disabled = false;
+});
+
+joinRoomBtn.addEventListener("click", async () => {
+  myName = nameInput.value.trim();
+  roomId = joinCodeInput.value.trim();
+
+  if (!myName) return alert("닉네임을 입력하세요.");
+  if (!/^\d{6}$/.test(roomId)) return alert("6자리 방번호를 입력하세요.");
+
+  joinRoomBtn.disabled = true;
+  await cleanupRooms();
+
+  const roomRef = doc(db, "game_rooms", roomId);
+  const roomSnap = await getDoc(roomRef);
+
+  if (!roomSnap.exists()) {
+    joinRoomBtn.disabled = false;
+    return alert("존재하지 않는 방입니다.");
+  }
+
+  if (roomSnap.data().status !== "waiting") {
+    joinRoomBtn.disabled = false;
+    return alert("이미 게임이 진행 중입니다.");
+  }
+
+  const playersSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
+  if (playersSnap.size >= 4) {
+    joinRoomBtn.disabled = false;
+    return alert("방이 가득 차서 입장할 수 없습니다. (최대 4인)");
+  }
+
+  myId = "p_" + Date.now();
+  isHost = false;
+  isReady = false;
+
+  await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
+    name: myName,
+    isHost: false,
+    isReady: false,
+    score: 0,
+    joinedAt: serverTimestamp()
+  });
+
+  await updateDoc(roomRef, { lastActive: serverTimestamp() });
+
+  enterLobby();
+  joinRoomBtn.disabled = false;
+});
+
+/* ==========================================
+   2. 대기실 로직
+========================================== */
+function enterLobby() {
+  loginCard.style.display = "none";
+  gameCard.style.display = "none";
+  lobbyCard.style.display = "block";
+  roomNoElem.textContent = roomId;
+
+  if (isHost) {
+    readyBtn.style.display = "none";
+    startBtn.style.display = "block";
+    hostSettings.style.display = "block";
+  } else {
+    readyBtn.style.display = "block";
+    startBtn.style.display = "none";
+    hostSettings.style.display = "none";
+  }
+
+  unsubscribeRoom = onSnapshot(doc(db, "game_rooms", roomId), (snap) => {
+    if (!snap.exists()) {
+      alert("방이 삭제되었습니다.");
+      leaveRoom();
+      return;
+    }
+    const data = snap.data();
+    if (data.status === "playing") {
+      startGameUI();
+    }
+  });
+
+  const playersQuery = query(collection(db, "game_rooms", roomId, "players"));
+  unsubscribePlayers = onSnapshot(playersQuery, (snap) => {
+    playerListElem.innerHTML = "";
+    let players = [];
+    snap.forEach(d => players.push({ id: d.id, ...d.data() }));
+
+    let allReady = true;
+    players.forEach(p => {
+      const isMe = p.id === myId;
+      if (!p.isReady) allReady = false;
+
+      const item = document.createElement("div");
+      item.className = "player-item" + (isMe ? " is-me" : "");
+      item.innerHTML = `
+        <div>
+          <strong>${p.name}</strong>
+          ${p.isHost ? '<span class="tag host">방장</span>' : ''}
+          ${isMe ? '<span class="tag">나</span>' : ''}
+        </div>
+        <div class="${p.isReady ? 'badge-ready' : 'badge-waiting'}">
+          ${p.isReady ? 'READY' : '대기중'}
+        </div>
+      `;
+      playerListElem.appendChild(item);
+    });
+
+    if (isHost) {
+      startBtn.disabled = !(players.length >= 2 && allReady);
+    }
+  });
+}
+
+readyBtn.addEventListener("click", async () => {
+  isReady = !isReady;
+  readyBtn.textContent = isReady ? "준비 취소" : "준비 (Ready)";
+  readyBtn.classList.toggle("is-ready", isReady);
+
+  await updateDoc(doc(db, "game_rooms", roomId, "players", myId), { isReady });
+});
+
+startBtn.addEventListener("click", async () => {
+  const selectedRounds = parseInt(roundSelect.value, 10);
+  
+  // 게임 데이터 초기화
+  await updateDoc(doc(db, "game_rooms", roomId), {
+    status: "playing",
+    totalRounds: selectedRounds,
+    currentRound: 1,
+    turnIndex: 0,
+    guesserTurnIndex: 0,
+    wordState: "input", // input | guessing | finished
+    secretWord: "",
+    hint: "",
+    guessedLetters: [],
+    lastActive: serverTimestamp()
+  });
+});
+
+/* ==========================================
+   3. 행맨 게임 실시간 동기화 및 제어
+========================================== */
+function startGameUI() {
+  lobbyCard.style.display = "none";
+  gameCard.style.display = "block";
+  renderKeyboard();
+
+  // 게임방 데이터 실시간 구독
+  unsubscribeRoom = onSnapshot(doc(db, "game_rooms", roomId), async (snap) => {
+    if (!snap.exists()) return;
+    const roomData = snap.data();
+
+    // 결과 화면 전환 상태인 경우
+    if (roomData.wordState === "finished_all") {
+      showLeaderboard();
+      return;
+    }
+
+    // 플레이어 목록 불러오기
+    const playersSnap = await getDocs(query(collection(db, "game_rooms", roomId, "players")));
+    let players = [];
+    playersSnap.forEach(d => players.push({ id: d.id, ...d.data() }));
+
+    const totalPlayers = players.length;
+    const makerPlayer = players[roomData.turnIndex % totalPlayers];
+
+    // 맞추는 사람 순서 계산 (출제자 제외 순서)
+    const guessers = players.filter(p => p.id !== makerPlayer.id);
+    const currentGuesser = guessers[roomData.guesserTurnIndex % guessers.length];
+
+    // 상단 라운드 정보
+    roundInfo.textContent = `Round ${roomData.currentRound} / ${roomData.totalRounds}`;
+    
+    // 플레이어 목록 UI 업데이트 (점수 및 차례 표시)
+    renderGamePlayers(players, makerPlayer, currentGuesser, roomData.wordState);
+
+    // [A] 출제 단계
+    if (roomData.wordState === "input") {
+      resultArea.style.display = "none";
+      guesserArea.style.display = "none";
+      
+      turnInfo.textContent = `[${makerPlayer.name}] 님이 문제를 출제 중입니다...`;
+
+      if (myId === makerPlayer.id) {
+        makerArea.style.display = "block";
+      } else {
+        makerArea.style.display = "none";
+      }
+    } 
+    // [B] 맞추기 단계
+    else if (roomData.wordState === "guessing") {
+      makerArea.style.display = "none";
+      resultArea.style.display = "none";
+      guesserArea.style.display = "block";
+
+      turnInfo.textContent = `[${currentGuesser.name}] 님의 차례입니다!`;
+
+      // 힌트 및 단어판 업데이트
+      hintDisplay.textContent = `💡 힌트: ${roomData.hint || '없음'}`;
+      renderWordDisplay(roomData.secretWord, roomData.guessedLetters);
+      updateKeyboardState(roomData.guessedLetters, myId === currentGuesser.id);
+
+      historyDisplay.textContent = `시도한 알파벳: ${roomData.guessedLetters.join(", ") || "없음"}`;
+
+      // 내가 정답을 맞출 차례인지 제어
+      const isMyTurnToGuess = myId === currentGuesser.id;
+      fullWordInput.disabled = !isMyTurnToGuess;
+      submitFullWordBtn.disabled = !isMyTurnToGuess;
+    }
+  });
+}
+
+// 플레이어 점수판 렌더링
+function renderGamePlayers(players, maker, guesser, state) {
+  gamePlayerList.innerHTML = "";
+  players.forEach(p => {
+    const isMaker = p.id === maker.id;
+    const isGuesser = state === "guessing" && guesser && p.id === guesser.id;
+
+    const item = document.createElement("div");
+    item.className = "player-item" + (isGuesser ? " turn" : "") + (p.id === myId ? " is-me" : "");
+    item.innerHTML = `
+      <div>
+        <strong>${p.name}</strong>
+        ${isMaker ? '<span class="tag host">출제자</span>' : ''}
+        ${isGuesser ? '<span class="tag">정답 시도 중</span>' : ''}
+      </div>
+      <div><strong>${p.score || 0}</strong> 점</div>
+    `;
+    gamePlayerList.appendChild(item);
+  });
+}
+
+// 단어 표시 가림막 렌더링
+function renderWordDisplay(secretWord, guessedLetters) {
+  wordDisplay.innerHTML = "";
+  for (let char of secretWord) {
+    const box = document.createElement("div");
+    if (char === " ") {
+      box.className = "letter-box space";
+    } else {
+      box.className = "letter-box";
+      if (guessedLetters.includes(char.toUpperCase())) {
+        box.textContent = char.toUpperCase();
+      } else {
+        box.textContent = "";
+      }
+    }
+    wordDisplay.appendChild(box);
+  }
+}
+
+// 알파벳 키보드 생성
+function renderKeyboard() {
+  keyboard.innerHTML = "";
+  for (let i = 65; i <= 90; i++) {
+    const letter = String.fromCharCode(i);
+    const btn = document.createElement("button");
+    btn.className = "key-btn";
+    btn.textContent = letter;
+    btn.dataset.letter = letter;
+    btn.addEventListener("click", () => guessLetter(letter));
+    keyboard.appendChild(btn);
+  }
+}
+
+function updateKeyboardState(guessedLetters, isMyTurn) {
+  const buttons = keyboard.querySelectorAll(".key-btn");
+  buttons.forEach(btn => {
+    const letter = btn.dataset.letter;
+    if (guessedLetters.includes(letter) || !isMyTurn) {
+      btn.disabled = true;
+    } else {
+      btn.disabled = false;
+    }
+  });
+}
+
+/* ==========================================
+   4. 출제 및 정답 맞추기 로직
+========================================== */
+// [출제] 문제 제출
+submitWordBtn.addEventListener("click", async () => {
+  const word = secretWordInput.value.trim().toUpperCase();
+  const hint = hintInput.value.trim();
+
+  if (!word) return alert("단어를 입력해주세요.");
+  if (!/^[A-Z\s]+$/.test(word)) return alert("문제는 영문 알파벳과 공백만 가능합니다.");
+
+  await updateDoc(doc(db, "game_rooms", roomId), {
+    secretWord: word,
+    hint: hint,
+    wordState: "guessing",
+    guessedLetters: [],
+    lastActive: serverTimestamp()
+  });
+
+  secretWordInput.value = "";
+  hintInput.value = "";
+});
+
+// [맞추기] 알파벳 제출
+async function guessLetter(letter) {
+  const roomSnap = await getDoc(doc(db, "game_rooms", roomId));
+  const roomData = roomSnap.data();
+
+  if (roomData.guessedLetters.includes(letter)) return;
+
+  const newGuessed = [...roomData.guessedLetters, letter];
+  const secret = roomData.secretWord;
+
+  let addedScore = 0;
+  // 단어에 해당 알파벳이 등장하는 횟수만큼 점수 추가 (+10점/개)
+  for (let char of secret) {
+    if (char === letter) addedScore += 10;
+  }
+
+  if (addedScore > 0) {
+    // 점수 획득
+    const pRef = doc(db, "game_rooms", roomId, "players", myId);
+    const pSnap = await getDoc(pRef);
+    await updateDoc(pRef, { score: (pSnap.data().score || 0) + addedScore });
+  }
+
+  // 모두 맞췄는지 확인
+  const isAllCleared = checkWordCleared(secret, newGuessed);
+
+  if (isAllCleared) {
+    alert("🎉 단어를 모두 맞추셨습니다! (+50점 추가 보너스)");
+    const pRef = doc(db, "game_rooms", roomId, "players", myId);
+    const pSnap = await getDoc(pRef);
+    await updateDoc(pRef, { score: (pSnap.data().score || 0) + 50 });
+
+    await nextTurnOrRound();
+  } else {
+    // 다음 플레이어로 턴 넘기기
+    await updateDoc(doc(db, "game_rooms", roomId), {
+      guessedLetters: newGuessed,
+      guesserTurnIndex: roomData.guesserTurnIndex + 1,
+      lastActive: serverTimestamp()
+    });
+  }
+}
+
+// [맞추기] 전체 단어 정답 직접 입력 제출
+submitFullWordBtn.addEventListener("click", async () => {
+  const fullGuess = fullWordInput.value.trim().toUpperCase();
+  if (!fullGuess) return;
+
+  const roomSnap = await getDoc(doc(db, "game_rooms", roomId));
+  const roomData = roomSnap.data();
+
+  if (fullGuess === roomData.secretWord) {
+    alert(`🎉 정답입니다! (${roomData.secretWord}) +100점 획득!`);
+    const pRef = doc(db, "game_rooms", roomId, "players", myId);
+    const pSnap = await getDoc(pRef);
+    await updateDoc(pRef, { score: (pSnap.data().score || 0) + 100 });
+
+    fullWordInput.value = "";
+    await nextTurnOrRound();
+  } else {
+    alert("❌ 오답입니다! 차례가 넘어갑니다.");
+    fullWordInput.value = "";
+    await updateDoc(doc(db, "game_rooms", roomId), {
+      guesserTurnIndex: roomData.guesserTurnIndex + 1,
+      lastActive: serverTimestamp()
+    });
+  }
+});
+
+// 모든 알파벳을 맞췄는지 검사하는 유틸리티
+function checkWordCleared(secretWord, guessedLetters) {
+  for (let char of secretWord) {
+    if (char !== " " && !guessedLetters.includes(char)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/* ==========================================
+   5. 턴 & 라운드 제어
+========================================== */
+async function nextTurnOrRound() {
+  const roomSnap = await getDoc(doc(db, "game_rooms", roomId));
+  const roomData = roomSnap.data();
+  const playersSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
+
+  const totalPlayers = playersSnap.size;
+  const nextTurnIndex = roomData.turnIndex + 1;
+
+  // 모든 인원이 돌아가며 한 번씩 문제를 다 내었으면 1라운드 종료
+  if (nextTurnIndex >= totalPlayers * roomData.currentRound) {
+    if (roomData.currentRound >= roomData.totalRounds) {
+      // 모든 라운드 종료 -> 결과 화면으로
+      await updateDoc(doc(db, "game_rooms", roomId), {
+        wordState: "finished_all",
+        lastActive: serverTimestamp()
+      });
+    } else {
+      // 다음 라운드로 진행
+      alert(`🔔 ${roomData.currentRound} 라운드가 끝났습니다! 다음 라운드로 진행합니다.`);
+      await updateDoc(doc(db, "game_rooms", roomId), {
+        currentRound: roomData.currentRound + 1,
+        turnIndex: nextTurnIndex,
+        guesserTurnIndex: 0,
+        wordState: "input",
+        secretWord: "",
+        hint: "",
+        guessedLetters: [],
+        lastActive: serverTimestamp()
+      });
+    }
+  } else {
+    // 다음 출제자의 차례
+    await updateDoc(doc(db, "game_rooms", roomId), {
+      turnIndex: nextTurnIndex,
+      guesserTurnIndex: 0,
+      wordState: "input",
+      secretWord: "",
+      hint: "",
+      guessedLetters: [],
+      lastActive: serverTimestamp()
+    });
+  }
+}
+
+/* ==========================================
+   6. 순위표 및 대기실 복귀
+========================================== */
+async function showLeaderboard() {
+  makerArea.style.display = "none";
+  guesserArea.style.display = "none";
+  resultArea.style.display = "block";
+
+  turnInfo.textContent = "게임 완요!";
+
+  const playersSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
+  let list = [];
+  playersSnap.forEach(d => list.push({ id: d.id, ...d.data() }));
+
+  // 점수 내림차순 정렬
+  list.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+  leaderboard.innerHTML = "";
+  list.forEach((p, idx) => {
+    const item = document.createElement("div");
+    item.className = `rank-item rank-${idx + 1}`;
+    item.innerHTML = `
+      <span><strong>${idx + 1}위:</strong> ${p.name} ${p.id === myId ? '(나)' : ''}</span>
+      <span>${p.score || 0} 점</span>
+    `;
+    leaderboard.appendChild(item);
+  });
+}
+
+backToLobbyBtn.addEventListener("click", async () => {
+  if (isHost) {
+    // 대기실 상태 및 준비 초기화
+    const playersSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
+    for (let pDoc of playersSnap.docs) {
+      await updateDoc(pDoc.ref, {
+        score: 0,
+        isReady: pDoc.id === myId // 방장은 ready 유지
+      });
+    }
+
+    await updateDoc(doc(db, "game_rooms", roomId), {
+      status: "waiting",
+      wordState: "input",
+      currentRound: 1,
+      turnIndex: 0,
+      guesserTurnIndex: 0
+    });
+  } else {
+    // 참가자는 다시 대기실 UI로
+    enterLobby();
+  }
+});
+
+/* ==========================================
+   7. 퇴장
+========================================== */
+async function leaveRoom() {
+  if (unsubscribeRoom) unsubscribeRoom();
+  if (unsubscribePlayers) unsubscribePlayers();
+
+  if (roomId && myId) {
+    try {
+      await deleteDoc(doc(db, "game_rooms", roomId, "players", myId));
+      const pSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
+      if (pSnap.empty) {
+        await deleteDoc(doc(db, "game_rooms", roomId));
+      } else if (isHost) {
+        const nextHost = pSnap.docs[0];
+        await updateDoc(doc(db, "game_rooms", roomId), { hostId: nextHost.id });
+        await updateDoc(doc(db, "game_rooms", roomId, "players", nextHost.id), {
+          isHost: true,
+          isReady: true
+        });
+      }
+    } catch (e) { console.error("Exit error:", e); }
+  }
+
+  roomId = ""; myId = ""; isHost = false; isReady = false;
+  loginCard.style.display = "block";
+  lobbyCard.style.display = "none";
+  gameCard.style.display = "none";
+}
+
+leaveBtn.addEventListener("click", leaveRoom);
+exitGameBtn.addEventListener("click", leaveRoom);
+
+joinCodeInput.addEventListener("input", function() {
+  this.value = this.value.replace(/\D/g, "").slice(0, 6);
+});
+</script>
+</body>
+</html>
