@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC 4인 실시간 P2P 액션 게임</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    #gameCanvas { background: #0f172a; touch-action: none; }
+  </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
+
+  <!-- UI 오버레이 -->
+  <div class="w-full max-w-4xl mb-4 flex justify-between items-center bg-slate-800 p-4 rounded-xl border border-slate-700">
+    <div>
+      <h1 class="text-xl font-bold text-indigo-400">P2P 액션 템플릿</h1>
+      <p id="status" class="text-sm text-gray-400">상태: 대기 중...</p>
+    </div>
+    <div id="connection-info" class="text-right text-xs text-gray-400">
+      연결된 피어: <span id="peer-count" class="font-bold text-green-400">0</span>명
+    </div>
+  </div>
+
+  <!-- 게임 화면 (Canvas) -->
+  <canvas id="gameCanvas" width="800" height="400" class="rounded-xl border border-slate-700 shadow-2xl mb-4"></canvas>
+
+  <!-- 가상 컨트롤러 (모바일 터치용 예시) -->
+  <div class="flex gap-2">
+    <button id="btn-left" class="bg-slate-800 hover:bg-slate-700 px-6 py-3 rounded-lg text-lg font-bold border border-slate-600">◀</button>
+    <button id="btn-right" class="bg-slate-800 hover:bg-slate-700 px-6 py-3 rounded-lg text-lg font-bold border border-slate-600">▶</button>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. 전역 상태 및 WebRTC 설정
+    // ==========================================
+    const myId = "user_" + Math.random().toString(36).substr(2, 6);
+    const peerConnections = {}; // { peerId: RTCPeerConnection }
+    const dataChannels = {};     // { peerId: RTCDataChannel }
+    
+    // Google 무료 STUN 서버 설정
+    const rtcConfig = {
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    };
+
+    // 내 캐릭터 및 참가자 좌표 정보
+    const players = {
+      [myId]: { x: Math.floor(Math.random() * 700) + 50, y: 320, color: "#" + Math.floor(Math.random()*16777215).toString(16) }
+    };
+
+    const keys = { left: false, right: false };
+
+    // ==========================================
+    // 2. WebRTC P2P 연결 로직 (Mesh 구조)
+    // ==========================================
+
+    // [신규 피어 연결 시작] 방에 참가한 다른 유저와 P2P 통로 생성
+    async function createPeerConnection(targetPeerId, isInitiator) {
+      if (peerConnections[targetPeerId]) return;
+
+      const pc = new RTCPeerConnection(rtcConfig);
+      peerConnections[targetPeerId] = pc;
+
+      // ICE Candidate 수신 시 시그널링 서버(기존 방 DB)로 전송
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          sendSignal(targetPeerId, { type: "candidate", candidate: event.candidate });
+        }
+      };
+
+      if (isInitiator) {
+        // 방장 또는 초대를 먼저 보낸 피어가 DataChannel 생성 (UDP 모드)
+        const dc = pc.createDataChannel("gameChannel", { ordered: false, maxRetransmits: 0 });
+        setupDataChannel(targetPeerId, dc);
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        sendSignal(targetPeerId, { type: "offer", offer: offer });
+      } else {
+        // 초대를 받은 피어가 DataChannel 수신 처리
+        pc.ondatachannel = (event) => {
+          setupDataChannel(targetPeerId, event.channel);
+        };
+      }
+    }
+
+    // [시그널링 메시지 수신 처리] 기존 방 DB 이벤트에 연결
+    async function handleSignal(fromPeerId, data) {
+      if (!peerConnections[fromPeerId] && data.type === "offer") {
+        await createPeerConnection(fromPeerId, false);
+      }
+
+      const pc = peerConnections[fromPeerId];
+
+      if (data.type === "offer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignal(fromPeerId, { type: "answer", answer: answer });
+      } else if (data.type === "answer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+      } else if (data.type === "candidate") {
+        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+      }
+    }
+
+    // DataChannel 이벤트 세팅 및 데이터 수신
+    function setupDataChannel(peerId, channel) {
+      dataChannels[peerId] = channel;
+
+      channel.onopen = () => {
+        updatePeerCount();
+        document.getElementById("status").innerText = "상태: P2P 실시간 연결 성공!";
+      };
+
+      channel.onclose = () => {
+        delete dataChannels[peerId];
+        delete peerConnections[peerId];
+        delete players[peerId];
+        updatePeerCount();
+      };
+
+      // 상대방이 보낸 실시간 좌표 수신 (초당 30~60회)
+      channel.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "pos") {
+          players[peerId] = { x: msg.x, y: msg.y, color: msg.color };
+        }
+      };
+    }
+
+    // [P2P 전송] 모든 연결된 피어에게 내 위치 브로드캐스트
+    function broadcastPosition() {
+      const payload = JSON.stringify({
+        type: "pos",
+        x: players[myId].x,
+        y: players[myId].y,
+        color: players[myId].color
+      });
+
+      Object.values(dataChannels).forEach(dc => {
+        if (dc && dc.readyState === "open") {
+          dc.send(payload); // 서버를 거치지 않고 직접 전송!
+        }
+      });
+    }
+
+    // 시그널링 메시지 송신 (기존 방 DB 연결용 래퍼 함수)
+    function sendSignal(targetPeerId, signalData) {
+      // TODO: 사용 중이신 기존 방 관리 DB(Firebase, Supabase 등)에
+      // sender: myId, target: targetPeerId, data: signalData 형태로 쓰기 수행
+      console.log(`[Signaling → ${targetPeerId}]`, signalData.type);
+    }
+
+    function updatePeerCount() {
+      const activePeers = Object.keys(dataChannels).length;
+      document.getElementById("peer-count").innerText = activePeers;
+    }
+
+    // ==========================================
+    // 3. 게임 렌더링 & 입력 조작 (60 FPS Engine)
+    // ==========================================
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // 키보드 / 터치 입력 처리
+    window.addEventListener("keydown", e => {
+      if (e.key === "ArrowLeft") keys.left = true;
+      if (e.key === "ArrowRight") keys.right = true;
+    });
+    window.addEventListener("keyup", e => {
+      if (e.key === "ArrowLeft") keys.left = false;
+      if (e.key === "ArrowRight") keys.right = false;
+    });
+
+    // 모바일 터치 이벤트
+    const btnLeft = document.getElementById("btn-left");
+    const btnRight = document.getElementById("btn-right");
+    btnLeft.addEventListener("touchstart", () => keys.left = true);
+    btnLeft.addEventListener("touchend", () => keys.left = false);
+    btnRight.addEventListener("touchstart", () => keys.right = true);
+    btnRight.addEventListener("touchend", () => keys.right = false);
+
+    // 메인 게임 루프
+    function gameLoop() {
+      // 1. 내 캐릭터 위치 이동 계산
+      let moved = false;
+      if (keys.left && players[myId].x > 20) {
+        players[myId].x -= 5;
+        moved = true;
+      }
+      if (keys.right && players[myId].x < canvas.width - 40) {
+        players[myId].x += 5;
+        moved = true;
+      }
+
+      // 위치가 변했을 때만 P2P로 상대방들에게 보냄
+      if (moved) {
+        broadcastPosition();
+      }
+
+      // 2. 화면 초기화
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 3. 모든 플레이어 그리기 (내 캐릭터 + P2P로 수신된 상대방들)
+      for (let id in players) {
+        const p = players[id];
+        ctx.fillStyle = p.color || "#00ff00";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 20, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 나인지 구분하는 태그
+        if (id === myId) {
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "12px sans-serif";
+          ctx.fillText("ME", p.x - 8, p.y - 25);
+        }
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // 게임 루프 시작
+    gameLoop();
+  </script>
+</body>
+</html>
