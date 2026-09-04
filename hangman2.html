@@ -224,13 +224,11 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
   <div class="game-main">
     <div class="hangman-drawing">
       <svg viewBox="0 0 100 120" stroke="#1e293b" stroke-width="3" fill="none" stroke-linecap="round">
-        <!-- 바닥 및 지지대 -->
         <line x1="10" y1="110" x2="90" y2="110" />
         <line x1="30" y1="110" x2="30" y2="10" />
         <line x1="30" y1="10" x2="70" y2="10" />
         <line x1="70" y1="10" x2="70" y2="25" />
         
-        <!-- 행맨 단계별 부위 -->
         <circle id="hang-head" cx="70" cy="35" r="10" style="display:none;" />
         <line id="hang-body" x1="70" y1="45" x2="70" y2="75" style="display:none;" />
         <line id="hang-armL" x1="70" y1="55" x2="55" y2="65" style="display:none;" />
@@ -248,7 +246,6 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
   <div class="word-display" id="wordDisplay">_ _ _ _ _</div>
   <div class="status-message" id="statusMessage">게임을 시작합니다.</div>
 
-  <!-- 가상 키보드 -->
   <div class="keyboard" id="keyboard"></div>
 
   <div id="p2pLog" class="p2p-status">P2P 연결 상태: 대기 중...</div>
@@ -274,14 +271,12 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// 단어 데이터베이스
 const WORD_LIST = [
   "JAVASCRIPT", "WEBRTC", "FIREBASE", "HANGMAN", "NETWORK",
   "DEVELOPER", "COMPUTER", "PROGRAMMING", "INTERNET", "BROWSER",
   "CANVAS", "KEYBOARD", "DATABASE", "PROTOCOL", "PEERTOPEER"
 ];
 
-// 상태 변수
 let roomId = "";
 let myId = "";
 let myName = "";
@@ -292,13 +287,11 @@ let unsubscribeRoom = null;
 let unsubscribePlayers = null;
 let unsubscribeSignals = null;
 
-// WebRTC 변수
 const rtcConfig = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 const peerConnections = {};
 const dataChannels = {};
 
-// 게임 로직 변수
-let playerList = []; // [{ id, name, isHost, score }]
+let playerList = [];
 let currentTurnIndex = 0;
 let targetWord = "";
 let guessedLetters = [];
@@ -307,7 +300,6 @@ const MAX_WRONG = 6;
 let roundCount = 1;
 let isGameOver = false;
 
-// DOM 요소
 const loginCard = document.getElementById("login");
 const lobbyCard = document.getElementById("lobby");
 const gameCard = document.getElementById("game");
@@ -343,9 +335,6 @@ const hangmanParts = [
   document.getElementById("hang-legR")
 ];
 
-/* ==========================================
-   유틸리티: 방 Cleanup
-========================================== */
 async function cleanupRooms() {
   try {
     const snap = await getDocs(collection(db, "game_rooms"));
@@ -384,9 +373,6 @@ async function deleteRoom(rId) {
   await deleteDoc(doc(db, "game_rooms", rId));
 }
 
-/* ==========================================
-   WebRTC P2P 시그널링
-========================================== */
 async function sendSignal(targetPeerId, signalData) {
   try {
     await addDoc(collection(db, "game_rooms", roomId, "signals"), {
@@ -436,6 +422,9 @@ function setupDataChannel(peerId, channel) {
   channel.onopen = () => {
     updatePlayerP2PStatus(peerId, true);
     updateP2pLog();
+    if (isHost) {
+      broadcastGameState("새 유저가 P2P 망에 접속했습니다.");
+    }
   };
 
   channel.onclose = () => {
@@ -511,9 +500,6 @@ function updateP2pLog() {
   p2pLog.textContent = `P2P 직접 연결된 피어: ${activeCount}명`;
 }
 
-/* ==========================================
-   1. 방 만들기 / 참가
-========================================== */
 createRoomBtn.addEventListener("click", async () => {
   myName = nameInput.value.trim();
   if (!myName) return alert("닉네임을 입력하세요.");
@@ -525,22 +511,28 @@ createRoomBtn.addEventListener("click", async () => {
   myId = "p_" + Date.now();
   isHost = true;
 
-  await setDoc(doc(db, "game_rooms", roomId), {
-    status: "waiting",
-    hostId: myId,
-    created: serverTimestamp(),
-    lastActive: serverTimestamp()
-  });
+  try {
+    await setDoc(doc(db, "game_rooms", roomId), {
+      status: "waiting",
+      hostId: myId,
+      created: serverTimestamp(),
+      lastActive: serverTimestamp()
+    });
 
-  await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
-    name: myName,
-    isHost: true,
-    isReady: true,
-    joinedAt: serverTimestamp()
-  });
+    await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
+      name: myName,
+      isHost: true,
+      isReady: true,
+      joinedAt: serverTimestamp()
+    });
 
-  enterLobby();
-  createRoomBtn.disabled = false;
+    enterLobby();
+  } catch(e) {
+    console.error("방 생성 오류:", e);
+    alert("방 생성 중 오류가 발생했습니다.");
+  } finally {
+    createRoomBtn.disabled = false;
+  }
 });
 
 joinRoomBtn.addEventListener("click", async () => {
@@ -551,47 +543,49 @@ joinRoomBtn.addEventListener("click", async () => {
   if (!/^\d{6}$/.test(roomId)) return alert("6자리 방번호를 입력하세요.");
 
   joinRoomBtn.disabled = true;
-  await cleanupRooms();
 
-  const roomRef = doc(doc(db, "game_rooms", roomId));
-  const roomSnap = await getDoc(roomRef);
+  try {
+    const roomRef = doc(db, "game_rooms", roomId);
+    const roomSnap = await getDoc(roomRef);
 
-  if (!roomSnap.exists()) {
+    if (!roomSnap.exists()) {
+      alert("존재하지 않는 방입니다.");
+      return;
+    }
+
+    if (roomSnap.data().status !== "waiting") {
+      alert("이미 게임이 진행 중인 방입니다.");
+      return;
+    }
+
+    const playersSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
+    if (playersSnap.size >= 4) {
+      alert("방이 가득 차서 입장할 수 없습니다. (최대 4인)");
+      return;
+    }
+
+    myId = "p_" + Date.now();
+    isHost = false;
+    isReady = false;
+
+    await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
+      name: myName,
+      isHost: false,
+      isReady: false,
+      joinedAt: serverTimestamp()
+    });
+
+    await updateDoc(roomRef, { lastActive: serverTimestamp() });
+
+    enterLobby();
+  } catch(e) {
+    console.error("방 참가 오류:", e);
+    alert("방 참가 도중 오류가 발생했습니다.");
+  } finally {
     joinRoomBtn.disabled = false;
-    return alert("존재하지 않는 방입니다.");
   }
-
-  if (roomSnap.data().status !== "waiting") {
-    joinRoomBtn.disabled = false;
-    return alert("이미 게임이 진행 중인 방입니다.");
-  }
-
-  const playersSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
-  if (playersSnap.size >= 4) {
-    joinRoomBtn.disabled = false;
-    return alert("방이 가득 차서 입장할 수 없습니다. (최대 4인)");
-  }
-
-  myId = "p_" + Date.now();
-  isHost = false;
-  isReady = false;
-
-  await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
-    name: myName,
-    isHost: false,
-    isReady: false,
-    joinedAt: serverTimestamp()
-  });
-
-  await updateDoc(roomRef, { lastActive: serverTimestamp() });
-
-  enterLobby();
-  joinRoomBtn.disabled = false;
 });
 
-/* ==========================================
-   2. 대기실
-========================================== */
 function enterLobby() {
   loginCard.style.display = "none";
   gameCard.style.display = "none";
@@ -689,9 +683,6 @@ startBtn.addEventListener("click", async () => {
   });
 });
 
-/* ==========================================
-   3. 행맨 게임 네트워크 & 로직 Engine
-========================================== */
 function startGameUI() {
   lobbyCard.style.display = "none";
   gameCard.style.display = "block";
@@ -704,7 +695,6 @@ function startGameUI() {
   updateP2pLog();
 }
 
-// 가상 키보드 생성
 function renderKeyboard() {
   keyboardElem.innerHTML = "";
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -718,7 +708,6 @@ function renderKeyboard() {
   }
 }
 
-// 방장: 새 라운드 시작
 function initNewGameRound() {
   targetWord = WORD_LIST[Math.floor(Math.random() * WORD_LIST.length)];
   guessedLetters = [];
@@ -729,13 +718,12 @@ function initNewGameRound() {
   broadcastGameState("라운드가 시작되었습니다! 추측을 시작하세요.");
 }
 
-// 방장: 현재 게임 상태 전체를 P2P로 브로드캐스트
 function broadcastGameState(msg = "") {
   if (!isHost) return;
 
   const statePayload = {
     type: "STATE_UPDATE",
-    targetWord: isGameOver ? targetWord : "", // 게임 종료 시에만 정답 공개
+    targetWord: isGameOver ? targetWord : "",
     wordMasked: getMaskedWord(),
     guessedLetters,
     wrongCount,
@@ -746,19 +734,14 @@ function broadcastGameState(msg = "") {
     message: msg
   };
 
-  // 방장 본인 UI 업데이트
   applyGameState(statePayload);
-
-  // 피어들에게 전송
   window.sendP2P(statePayload);
 }
 
-// 마스킹 단어 생성 (_ _ A _ E)
 function getMaskedWord() {
   return targetWord.split("").map(char => guessedLetters.includes(char) ? char : "_").join(" ");
 }
 
-// 모든 클라이언트: 수신된 게임 상태를 화면에 동기화
 function applyGameState(data) {
   guessedLetters = data.guessedLetters;
   wrongCount = data.wrongCount;
@@ -772,16 +755,13 @@ function applyGameState(data) {
   wordDisplay.textContent = data.wordMasked || getMaskedWord();
   statusMessage.textContent = data.message;
 
-  // 오답 알파벳 표시
   const wrongLetters = guessedLetters.filter(l => !targetWord.includes(l));
   wrongLettersList.textContent = wrongLetters.length > 0 ? wrongLetters.join(", ") : "-";
 
-  // 행맨 그림 업데이트
   hangmanParts.forEach((part, idx) => {
     part.style.display = idx < wrongCount ? "inline" : "none";
   });
 
-  // 턴 표시
   const currentTurnPlayer = playerList[currentTurnIndex];
   if (currentTurnPlayer) {
     const isMyTurn = currentTurnPlayer.id === myId;
@@ -789,10 +769,8 @@ function applyGameState(data) {
     turnDisplay.style.color = isMyTurn ? "#16a34a" : "#38bdf8";
   }
 
-  // 인게임 점수판 업데이트
   renderInGamePlayerList();
 
-  // 키보드 버튼 상태 동기화
   const isMyTurn = currentTurnPlayer && currentTurnPlayer.id === myId;
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   
@@ -811,7 +789,6 @@ function applyGameState(data) {
   }
 }
 
-// 인게임 점수판
 function renderInGamePlayerList() {
   inGamePlayerList.innerHTML = "";
   playerList.forEach((p, idx) => {
@@ -828,7 +805,6 @@ function renderInGamePlayerList() {
   });
 }
 
-// 플레이어 알파벳 버튼 클릭 시
 function handleLetterInput(letter) {
   const currentTurnPlayer = playerList[currentTurnIndex];
   if (!currentTurnPlayer || currentTurnPlayer.id !== myId || isGameOver) return;
@@ -836,7 +812,6 @@ function handleLetterInput(letter) {
   if (isHost) {
     processLetterGuess(letter, myId);
   } else {
-    // 호스트에게 P2P로 추측 알파벳 전송
     window.sendP2P({
       type: "GUESS_LETTER",
       senderId: myId,
@@ -845,7 +820,6 @@ function handleLetterInput(letter) {
   }
 }
 
-// 방장: 추측된 알파벳 검증 및 점수/턴 계산
 function processLetterGuess(letter, senderId) {
   if (!isHost || guessedLetters.includes(letter) || isGameOver) return;
 
@@ -856,19 +830,16 @@ function processLetterGuess(letter, senderId) {
   let msg = "";
 
   if (targetWord.includes(letter)) {
-    // 정답 처리
     senderPlayer.score = (senderPlayer.score || 0) + 10;
     msg = `${senderName}님이 '${letter}' 맞춤! (+10점)`;
 
-    // 단어 완성 여부 확인
     const isCompleted = targetWord.split("").every(c => guessedLetters.includes(c));
     if (isCompleted) {
       isGameOver = true;
-      senderPlayer.score += 30; // 보너스
+      senderPlayer.score += 30;
       msg = `🎉 ${senderName}님이 단어 [${targetWord}]를 완성했습니다! (+30점 보너스)`;
     }
   } else {
-    // 오답 처리
     wrongCount++;
     msg = `${senderName}님의 '${letter}' 틀림! (남은 기회 ${MAX_WRONG - wrongCount})`;
 
@@ -878,14 +849,12 @@ function processLetterGuess(letter, senderId) {
     }
   }
 
-  // 게임이 안 끝났다면 다음 턴 넘기기
   if (!isGameOver) {
     currentTurnIndex = (currentTurnIndex + 1) % playerList.length;
   }
 
   broadcastGameState(msg);
 
-  // 게임 종료 시 4초 후 다음 라운드 자동 시작
   if (isGameOver) {
     setTimeout(() => {
       roundCount++;
@@ -894,22 +863,16 @@ function processLetterGuess(letter, senderId) {
   }
 }
 
-// P2P 메시지 수신 핸들러
 function onP2PMessage(senderId, data) {
   if (data.type === "GUESS_LETTER" && isHost) {
-    // 게스트로부터 알파벳 추측 수신 (방장만 처리)
     if (playerList[currentTurnIndex]?.id === senderId) {
       processLetterGuess(data.letter, senderId);
     }
   } else if (data.type === "STATE_UPDATE") {
-    // 방장으로부터 최신 게임 상태 수신
     applyGameState(data);
   }
 }
 
-/* ==========================================
-   4. 방 퇴장 및 정리
-========================================== */
 async function leaveRoom() {
   if (unsubscribeRoom) unsubscribeRoom();
   if (unsubscribePlayers) unsubscribePlayers();
