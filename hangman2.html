@@ -758,6 +758,11 @@ function broadcastGameState(msg = "") {
     targetWord: isGameOver ? targetWord : "",
     wordMasked: getMaskedWord(),
     guessedLetters,
+    // [FIX] 참가자는 targetWord를 모르기 때문에(빈 문자열),
+    // "틀린 글자"를 정답 단어를 아는 호스트 쪽에서 미리 계산해서 같이 보냄.
+    // 기존에는 각 클라이언트가 로컬 targetWord로 다시 계산했는데,
+    // 참가자의 targetWord는 항상 ""라서 모든 글자가 틀림으로 표시되던 버그가 있었음.
+    wrongLetters: guessedLetters.filter(l => !targetWord.includes(l)),
     wrongCount,
     currentTurnIndex,
     roundCount,
@@ -787,7 +792,8 @@ function applyGameState(data) {
   wordDisplay.textContent = data.wordMasked || getMaskedWord();
   statusMessage.textContent = data.message;
 
-  const wrongLetters = guessedLetters.filter(l => !targetWord.includes(l));
+  // [FIX] 로컬 targetWord 대신, 호스트가 계산해서 보내준 wrongLetters를 그대로 사용
+  const wrongLetters = data.wrongLetters || [];
   wrongLettersList.textContent = wrongLetters.length > 0 ? wrongLetters.join(", ") : "-";
 
   hangmanParts.forEach((part, idx) => {
@@ -812,7 +818,8 @@ function applyGameState(data) {
 
     if (guessedLetters.includes(char)) {
       btn.disabled = true;
-      const isCorrect = (data.targetWord || targetWord).includes(char);
+      // [FIX] 마찬가지로 targetWord 대신 wrongLetters 기준으로 정답/오답 색상 결정
+      const isCorrect = !wrongLetters.includes(char);
       btn.className = `key-btn ${isCorrect ? 'correct' : 'wrong'}`;
     } else {
       btn.disabled = !isMyTurn || isGameOver;
