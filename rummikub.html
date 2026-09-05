@@ -539,40 +539,33 @@ const Game = {
       }
 
       // 3) 초기 멜드 검사
+      // 규칙: 아직 멜드한 적 없는 플레이어는
+      //  - 기존 테이블 타일을 옮기거나 빼면 안 됨 (그대로 유지)
+      //  - 손패에서 새로 올린 타일 합이 30점 이상이어야 함
       const isInitial = !state.hasMelded[senderId];
       if (isInitial) {
-        // 테이블에 새로 올라간 타일 = 원래 손패에 있던 것들
         const originalHandIds = new Set((state.hands[senderId] || []).map(t => t.id));
-        let points = 0;
-        let usedTableTile = false;
-        for (const meld of proposedTable) {
-          for (const t of meld) {
-            const id = t.id;
-            if (!originalHandIds.has(id)) usedTableTile = true;
-            else points += tileValue(allOldTilesMap[id]);
-          }
-        }
-        // 원래 테이블에 있던 타일이 그대로 있는 경우는 괜찮음 (초기에는 테이블이 비어 있음)
-        if (state.table.length > 0) {
-          // 초기 멜드 전에 테이블에 무언가 있으면 안 되지만, 안전장치
-        }
-        if (usedTableTile && state.table.length === 0) {
-          // 테이블이 원래 비어 있었는데 손패 외 타일이 들어왔다면 오류
-        }
-        // 더 정확한 검사: 원래 테이블 타일 ID
         const originalTableIds = new Set();
         for (const meld of state.table) for (const t of meld) originalTableIds.add(t.id);
 
+        // 기존 테이블 타일이 하나라도 사라졌으면 → 테이블을 조작한 것 → 금지
+        for (const id of originalTableIds) {
+          if (!newIds.has(id)) {
+            return {
+              newState: state,
+              message: "초기 멜드에서는 기존 테이블을 조작할 수 없습니다. 손패에서만 세트를 내세요.",
+              isGameOver: false,
+              advanceTurn: false
+            };
+          }
+        }
+
+        // 손패에서 새로 테이블로 올린 타일 점수 합산
+        let points = 0;
         for (const meld of proposedTable) {
           for (const t of meld) {
-            if (originalTableIds.has(t.id)) {
-              // 원래 테이블 타일을 사용한 경우 → 초기 멜드에서는 금지
-              return {
-                newState: state,
-                message: "초기 멜드에서는 테이블에 있던 타일을 사용할 수 없습니다.",
-                isGameOver: false,
-                advanceTurn: false
-              };
+            if (originalHandIds.has(t.id)) {
+              points += tileValue(allOldTilesMap[t.id]);
             }
           }
         }
