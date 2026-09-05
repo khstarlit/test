@@ -1,1 +1,903 @@
- 
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P2P Rummikub Game</title>
+
+<style>
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 16px 10px;
+  background: #f1f5f9;
+  user-select: none;
+}
+.card {
+  background: white;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+h2, h3 { text-align: center; margin-top: 0; }
+input {
+  width: 100%;
+  padding: 12px;
+  margin: 6px 0;
+  font-size: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+}
+button {
+  width: 100%;
+  padding: 12px;
+  margin: 6px 0;
+  font-size: 15px;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+button:disabled { background: #94a3b8; cursor: not-allowed; }
+button:active:not(:disabled) { opacity: 0.8; }
+hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
+
+#lobby, #game { display: none; }
+
+.room-code {
+  text-align: center;
+  font-size: 28px;
+  font-weight: bold;
+  color: #2563eb;
+  letter-spacing: 2px;
+  margin: 10px 0;
+}
+
+.player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+.player-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.player-item.is-me { border-color: #2563eb; background: #eff6ff; }
+.player-item.is-turn { border: 2px solid #16a34a; background: #f0fdf4; }
+.tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #cbd5e1;
+  color: #334155;
+  margin-left: 4px;
+}
+.tag.host { background: #fef08a; color: #854d0e; }
+.tag.p2p { background: #dcfce7; color: #166534; }
+.badge-ready { font-weight: bold; color: #16a34a; }
+.badge-waiting { color: #94a3b8; }
+
+.leave-btn { background: #64748b; margin-top: 10px; }
+.ready-btn { background: #16a34a; }
+.ready-btn.is-ready { background: #dc2626; }
+
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #0f172a;
+  color: white;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+.turn-indicator { font-weight: bold; color: #38bdf8; }
+.status-message {
+  text-align: center;
+  font-weight: bold;
+  font-size: 15px;
+  margin: 8px 0;
+  min-height: 22px;
+  color: #1e293b;
+}
+.p2p-status { font-size: 12px; color: #64748b; text-align: center; margin-top: 8px; }
+
+/* ===== 루미큐브 전용 CSS ===== */
+.rk-tile {
+  width: 36px;
+  height: 50px;
+  background: #fffbeb;
+  border: 2px solid #d97706;
+  border-radius: 6px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 18px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+  cursor: pointer;
+  margin: 2px;
+  position: relative;
+  transition: transform 0.1s;
+}
+.rk-tile:hover { transform: translateY(-2px); }
+.rk-tile.selected { border-color: #2563eb; box-shadow: 0 0 8px #2563eb; transform: translateY(-4px); }
+.rk-tile.red { color: #dc2626; }
+.rk-tile.blue { color: #2563eb; }
+.rk-tile.yellow { color: #d97706; }
+.rk-tile.black { color: #1e293b; }
+.rk-tile.joker { color: #9333ea; font-size: 13px; }
+
+.board-container {
+  min-height: 180px;
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-content: flex-start;
+}
+.tile-group {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  padding: 4px 6px;
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 50px;
+  min-height: 58px;
+  align-items: center;
+}
+.rack-container {
+  margin-top: 12px;
+  background: #334155;
+  border-radius: 12px;
+  padding: 10px;
+  min-height: 70px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.action-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+.action-bar button { padding: 8px; font-size: 13px; margin: 0; }
+.btn-draw { background: #d97706; }
+.btn-submit { background: #16a34a; }
+.btn-reset { background: #dc2626; }
+.btn-sort { background: #475569; }
+</style>
+</head>
+
+<body>
+
+<div class="card" id="login">
+  <h2>🎮 루미큐브 (Rummikub)</h2>
+  <input id="name" type="text" placeholder="닉네임 입력" maxlength="12">
+  <button id="createRoomBtn">방 만들기 (2~4인)</button>
+  <hr>
+  <input id="joinCode" type="text" inputmode="numeric" maxlength="6" placeholder="방번호 6자리">
+  <button id="joinRoomBtn">방 참가하기</button>
+</div>
+
+<div class="card" id="lobby">
+  <h3>대기실</h3>
+  <div class="room-code" id="roomNo">------</div>
+  <div class="player-list" id="playerList"></div>
+  <button id="readyBtn" class="ready-btn">준비 (Ready)</button>
+  <button id="startBtn" style="display: none;">게임 시작</button>
+  <button id="leaveBtn" class="leave-btn">방 나가기</button>
+</div>
+
+<div class="card" id="game">
+  <div class="game-header">
+    <div>남은 타일: <span id="poolDisplay">0</span></div>
+    <div class="turn-indicator" id="turnDisplay">대기 중...</div>
+  </div>
+
+  <div class="player-list" id="inGamePlayerList" style="margin: 0 0 10px 0; gap: 4px;"></div>
+  <div class="status-message" id="statusMessage">게임을 시작합니다.</div>
+
+  <div id="gameArea"></div>
+
+  <div id="p2pLog" class="p2p-status">P2P 연결 상태: 대기 중...</div>
+  <button id="exitGameBtn" class="leave-btn">게임 종료 및 대기실 복귀</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import {
+  getFirestore, doc, setDoc, getDoc, getDocs, deleteDoc,
+  collection, query, onSnapshot, serverTimestamp, updateDoc, addDoc
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCzpHiT-TYIgIZ8quOjMM9dBgf8sIJnVIo",
+  authDomain: "test-1f1f7.firebaseapp.com",
+  projectId: "test-1f1f7",
+  storageBucket: "test-1f1f7.firebasestorage.app",
+  messagingSenderId: "51206027214",
+  appId: "1:51206027214:web:da9406137e4fe6ac7bdd9f"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* ================================================================
+   ★★★ 게임 로직 영역 (Rummikub 구현) ★★★
+================================================================ */
+let localSelection = null; // { type: 'rack' | 'board', tileId, groupIdx }
+
+const Game = {
+  createInitialState() {
+    const colors = ['red', 'blue', 'yellow', 'black'];
+    let pool = [];
+    let tileId = 1;
+
+    for (let c of colors) {
+      for (let n = 1; n <= 13; n++) {
+        pool.push({ id: tileId++, color: c, num: n, isJoker: false });
+        pool.push({ id: tileId++, color: c, num: n, isJoker: false });
+      }
+    }
+    pool.push({ id: tileId++, color: 'joker', num: 0, isJoker: true });
+    pool.push({ id: tileId++, color: 'joker', num: 0, isJoker: true });
+
+    // Shuffle
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+
+    return {
+      pool: pool,
+      board: [],         // 타일 그룹들의 배열: [[tile1, tile2], ...]
+      turnStartBoard: [],// 이번 턴 시작 시점의 보드 (롤백용)
+      racks: {},         // { playerId: [tile1, tile2, ...] }
+      initialMelded: {}  // { playerId: boolean } (등록 30점 유무)
+    };
+  },
+
+  setupUI() {
+    document.getElementById("gameArea").innerHTML = `
+      <div style="font-size:12px; font-weight:bold; color:#475569; margin-bottom:4px;">게임 보드 (바닥)</div>
+      <div class="board-container" id="boardArea"></div>
+      
+      <div style="font-size:12px; font-weight:bold; color:#475569; margin-top:10px; margin-bottom:4px;">내 받침대</div>
+      <div class="rack-container" id="rackArea"></div>
+
+      <div class="action-bar">
+        <button class="btn-sort" id="btnSortColor">색상정렬</button>
+        <button class="btn-sort" id="btnSortNum">숫자정렬</button>
+        <button class="btn-reset" id="btnReset">턴 원복</button>
+        <button class="btn-draw" id="btnDraw">타일 뽑기</button>
+      </div>
+      <button class="btn-submit" id="btnSubmit" style="margin-top:8px;">턴 마침 (제출하기)</button>
+    `;
+
+    document.getElementById("btnSortColor").onclick = () => {
+      if (!gameData.racks[myId]) return;
+      gameData.racks[myId].sort((a, b) => a.color.localeCompare(b.color) || a.num - b.num);
+      Game.render(gameData, playerList, myId, playerList[currentTurnIndex]?.id === myId);
+    };
+
+    document.getElementById("btnSortNum").onclick = () => {
+      if (!gameData.racks[myId]) return;
+      gameData.racks[myId].sort((a, b) => a.num - b.num || a.color.localeCompare(b.color));
+      Game.render(gameData, playerList, myId, playerList[currentTurnIndex]?.id === myId);
+    };
+
+    document.getElementById("btnReset").onclick = () => {
+      window.sendGameAction({ type: "RESET_TURN" });
+    };
+
+    document.getElementById("btnDraw").onclick = () => {
+      window.sendGameAction({ type: "DRAW_TILE" });
+    };
+
+    document.getElementById("btnSubmit").onclick = () => {
+      window.sendGameAction({ type: "SUBMIT_TURN" });
+    };
+  },
+
+  applyAction(state, action, senderId, playerList) {
+    // 1. 플레이어 초기화 (14장씩 나누어주기)
+    playerList.forEach(p => {
+      if (!state.racks[p.id]) {
+        state.racks[p.id] = state.pool.splice(0, 14);
+        state.initialMelded[p.id] = false;
+      }
+    });
+
+    if (state.turnStartBoard.length === 0 && state.board.length > 0) {
+      state.turnStartBoard = JSON.parse(JSON.stringify(state.board));
+    }
+
+    const player = playerList.find(p => p.id === senderId);
+
+    // [Action: 타일 뽑기]
+    if (action.type === "DRAW_TILE") {
+      if (state.pool.length > 0) {
+        const drawn = state.pool.pop();
+        state.racks[senderId].push(drawn);
+      }
+      // 턴 원복 후 다음 턴
+      if (state.turnStartBoard.length > 0) {
+        state.board = JSON.parse(JSON.stringify(state.turnStartBoard));
+      }
+      state.turnStartBoard = [];
+      return { newState: state, message: `${player.name}님이 타일을 1장 뽑았습니다.`, advanceTurn: true };
+    }
+
+    // [Action: 턴 원복]
+    if (action.type === "RESET_TURN") {
+      if (state.turnStartBoard) {
+        // 보드 원복 및 이번 턴에 낸 타일 다시 받침대로
+        state.board = JSON.parse(JSON.stringify(state.turnStartBoard));
+      }
+      return { newState: state, message: `${player.name}님이 배치를 초기화했습니다.`, advanceTurn: false };
+    }
+
+    // [Action: 타일 이동/배치]
+    if (action.type === "MOVE_TILE") {
+      const { src, dest } = action; // src, dest 정보
+      let tile = null;
+
+      // 소스에서 타일 제거
+      if (src.type === 'rack') {
+        const idx = state.racks[senderId].findIndex(t => t.id === src.tileId);
+        if (idx !== -1) tile = state.racks[senderId].splice(idx, 1)[0];
+      } else if (src.type === 'board') {
+        const group = state.board[src.groupIdx];
+        if (group) {
+          const idx = group.findIndex(t => t.id === src.tileId);
+          if (idx !== -1) {
+            tile = group.splice(idx, 1)[0];
+            if (group.length === 0) state.board.splice(src.groupIdx, 1);
+          }
+        }
+      }
+
+      if (tile) {
+        // 목적지에 타일 추가
+        if (dest.type === 'newGroup') {
+          state.board.push([tile]);
+        } else if (dest.type === 'group') {
+          if (state.board[dest.groupIdx]) {
+            state.board[dest.groupIdx].push(tile);
+          }
+        }
+      }
+      return { newState: state, message: "", advanceTurn: false };
+    }
+
+    // [Action: 턴 완료 제출]
+    if (action.type === "SUBMIT_TURN") {
+      // 1. 빈 그룹 제거
+      state.board = state.board.filter(g => g.length > 0);
+
+      // 2. 보드의 모든 그룹 규칙 검증
+      let allValid = true;
+      for (let group of state.board) {
+        if (!Game.isValidGroup(group)) {
+          allValid = false;
+          break;
+        }
+      }
+
+      if (!allValid) {
+        return { newState: state, message: "⚠️ 보드의 타일 조합이 유효하지 않습니다! (3장 이상의 Run/Group)", advanceTurn: false };
+      }
+
+      // 3. 최초 등록(Initial Meld) 규칙 검증 (30점 이상)
+      if (!state.initialMelded[senderId]) {
+        const isMeldValid = Game.checkInitialMeld(state.turnStartBoard, state.board);
+        if (!isMeldValid) {
+          return { newState: state, message: "⚠️ 첫 등록은 등록한 타일의 합이 30점 이상이어야 합니다!", advanceTurn: false };
+        }
+        state.initialMelded[senderId] = true;
+      }
+
+      // 승리 조건 체크
+      if (state.racks[senderId].length === 0) {
+        return { newState: state, message: `🎉 ${player.name}님이 모든 타일을 사용하여 승리했습니다!`, isGameOver: true };
+      }
+
+      state.turnStartBoard = JSON.parse(JSON.stringify(state.board));
+      return { newState: state, message: `${player.name}님이 턴을 마쳤습니다.`, advanceTurn: true };
+    }
+
+    return { newState: state, message: "", advanceTurn: false };
+  },
+
+  // 그룹 유효성 검사 (Run 또는 Group)
+  isValidGroup(group) {
+    if (group.length < 3) return false;
+
+    const nonJokers = group.filter(t => !t.isJoker);
+    if (nonJokers.length === 0) return true; // 조커만 있는 경우 인정
+
+    // 1. Group 테스트 (숫자 동일, 색상 모두 다름)
+    const sameNum = nonJokers.every(t => t.num === nonJokers[0].num);
+    if (sameNum) {
+      const colors = nonJokers.map(t => t.color);
+      const uniqueColors = new Set(colors);
+      if (colors.length === uniqueColors.size && group.length <= 4) return true;
+    }
+
+    // 2. Run 테스트 (색상 동일, 연속된 숫자)
+    const sameColor = nonJokers.every(t => t.color === nonJokers[0].color);
+    if (sameColor) {
+      // 숫자 정렬 후 연속 여부 확인
+      let copy = [...group].sort((a, b) => {
+        if (a.isJoker) return 0;
+        if (b.isJoker) return 0;
+        return a.num - b.num;
+      });
+
+      // 간단 검증: 최소값과 최대값 범위 체크
+      let nums = nonJokers.map(t => t.num).sort((a, b) => a - b);
+      let min = nums[0];
+      let max = nums[nums.length - 1];
+      let jokerCount = group.length - nonJokers.length;
+
+      if (max - min < group.length && (new Set(nums)).size === nums.length) {
+        return true;
+      }
+    }
+
+    return false;
+  },
+
+  // 첫 등록 30점 검증
+  checkInitialMeld(oldBoard, newBoard) {
+    // 단순화 구현: 새로 추가된 그룹의 숫자 합산
+    let sum = 0;
+    for (let group of newBoard) {
+      if (Game.isValidGroup(group)) {
+        for (let tile of group) {
+          sum += tile.isJoker ? 10 : tile.num;
+        }
+      }
+    }
+    return sum >= 30;
+  },
+
+  render(state, playerList, myId, isMyTurn) {
+    const boardArea = document.getElementById("boardArea");
+    const rackArea = document.getElementById("rackArea");
+    const poolDisplay = document.getElementById("poolDisplay");
+
+    if (!boardArea || !rackArea) return;
+
+    poolDisplay.textContent = state.pool ? state.pool.length : 0;
+    boardArea.innerHTML = "";
+    rackArea.innerHTML = "";
+
+    // 1. 보드 타일 그룹 그리기
+    (state.board || []).forEach((group, groupIdx) => {
+      const gDiv = document.createElement("div");
+      gDiv.className = "tile-group";
+
+      group.forEach(tile => {
+        const tDiv = Game.createTileElem(tile);
+        if (localSelection && localSelection.tileId === tile.id) tDiv.classList.add("selected");
+
+        tDiv.onclick = (e) => {
+          e.stopPropagation();
+          if (!isMyTurn) return;
+          Game.handleTileClick({ type: 'board', tileId: tile.id, groupIdx });
+        };
+        gDiv.appendChild(tDiv);
+      });
+
+      // 그룹 클릭 시 타일 이동 목적지로 지정
+      gDiv.onclick = () => {
+        if (!isMyTurn || !localSelection) return;
+        window.sendGameAction({
+          type: "MOVE_TILE",
+          src: localSelection,
+          dest: { type: 'group', groupIdx }
+        });
+        localSelection = null;
+      };
+
+      boardArea.appendChild(gDiv);
+    });
+
+    // 새 그룹 생성 영역 클릭 이벤트
+    boardArea.onclick = (e) => {
+      if (e.target !== boardArea || !isMyTurn || !localSelection) return;
+      window.sendGameAction({
+        type: "MOVE_TILE",
+        src: localSelection,
+        dest: { type: 'newGroup' }
+      });
+      localSelection = null;
+    };
+
+    // 2. 내 받침대 타일 그리기
+    const myRack = (state.racks && state.racks[myId]) ? state.racks[myId] : [];
+    myRack.forEach(tile => {
+      const tDiv = Game.createTileElem(tile);
+      if (localSelection && localSelection.tileId === tile.id) tDiv.classList.add("selected");
+
+      tDiv.onclick = () => {
+        if (!isMyTurn) return;
+        Game.handleTileClick({ type: 'rack', tileId: tile.id });
+      };
+      rackArea.appendChild(tDiv);
+    });
+  },
+
+  createTileElem(tile) {
+    const div = document.createElement("div");
+    div.className = `rk-tile ${tile.color}`;
+    div.textContent = tile.isJoker ? "🃏" : tile.num;
+    return div;
+  },
+
+  handleTileClick(clickInfo) {
+    if (!localSelection) {
+      localSelection = clickInfo;
+    } else {
+      if (localSelection.tileId === clickInfo.tileId) {
+        localSelection = null; // 선택 취소
+      } else {
+        localSelection = clickInfo; // 다른 타일 선택 변경
+      }
+    }
+    Game.render(gameData, playerList, myId, playerList[currentTurnIndex]?.id === myId);
+  }
+};
+
+/* ================================================================
+   ★★★ 엔진 기본 멀티플레이어 바인딩 코드 ★★★
+================================================================ */
+let roomId = "";
+let myId = "";
+let myName = "";
+let isHost = false;
+let isReady = false;
+
+let unsubscribeRoom = null;
+let unsubscribePlayers = null;
+let unsubscribeSignals = null;
+
+const rtcConfig = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+const peerConnections = {};
+const dataChannels = {};
+
+let playerList = [];
+let currentTurnIndex = 0;
+let roundCount = 1;
+let isGameOver = false;
+let gameData = {};
+
+const loginCard = document.getElementById("login");
+const lobbyCard = document.getElementById("lobby");
+const gameCard = document.getElementById("game");
+
+const nameInput = document.getElementById("name");
+const joinCodeInput = document.getElementById("joinCode");
+const roomNoElem = document.getElementById("roomNo");
+const playerListElem = document.getElementById("playerList");
+
+const createRoomBtn = document.getElementById("createRoomBtn");
+const joinRoomBtn = document.getElementById("joinRoomBtn");
+const readyBtn = document.getElementById("readyBtn");
+const startBtn = document.getElementById("startBtn");
+const leaveBtn = document.getElementById("leaveBtn");
+const exitGameBtn = document.getElementById("exitGameBtn");
+
+const turnDisplay = document.getElementById("turnDisplay");
+const statusMessage = document.getElementById("statusMessage");
+const inGamePlayerList = document.getElementById("inGamePlayerList");
+const p2pLog = document.getElementById("p2pLog");
+
+async function cleanupRooms() {
+  try {
+    const snap = await getDocs(collection(db, "game_rooms"));
+    const now = Date.now();
+    let list = [];
+    snap.forEach(d => list.push({ id: d.id, lastActive: d.data().lastActive?.toMillis() || now }));
+    for (const r of list) {
+      if (now - r.lastActive > 3600000) await deleteRoom(r.id);
+    }
+  } catch (e) { console.error(e); }
+}
+
+async function deleteRoom(rId) {
+  const pSnap = await getDocs(collection(db, "game_rooms", rId, "players"));
+  for (const p of pSnap.docs) await deleteDoc(p.ref);
+  const sSnap = await getDocs(collection(db, "game_rooms", rId, "signals"));
+  for (const s of sSnap.docs) await deleteDoc(s.ref);
+  await deleteDoc(doc(db, "game_rooms", rId));
+}
+
+async function sendSignal(targetPeerId, signalData) {
+  try {
+    await addDoc(collection(db, "game_rooms", roomId, "signals"), {
+      sender: myId, target: targetPeerId, data: JSON.stringify(signalData), timestamp: serverTimestamp()
+    });
+  } catch (e) {}
+}
+
+async function initPeerConnection(targetPeerId, isInitiator) {
+  if (peerConnections[targetPeerId]) return;
+  const pc = new RTCPeerConnection(rtcConfig);
+  peerConnections[targetPeerId] = pc;
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) sendSignal(targetPeerId, { type: "candidate", candidate: e.candidate });
+  };
+
+  if (isInitiator) {
+    const dc = pc.createDataChannel("gameChannel");
+    setupDataChannel(targetPeerId, dc);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    sendSignal(targetPeerId, { type: "offer", offer });
+  } else {
+    pc.ondatachannel = (e) => setupDataChannel(targetPeerId, e.channel);
+  }
+}
+
+function setupDataChannel(peerId, channel) {
+  dataChannels[peerId] = channel;
+  channel.onopen = () => { updateP2pLog(); if (isHost) broadcastGameState("새 플레이어 접속됨"); };
+  channel.onclose = () => { closePeer(peerId); updateP2pLog(); };
+  channel.onmessage = (e) => onP2PMessage(peerId, JSON.parse(e.data));
+}
+
+async function handleSignalData(senderId, signal) {
+  if (senderId === myId) return;
+  if (signal.type === "offer") {
+    await initPeerConnection(senderId, false);
+    const pc = peerConnections[senderId];
+    await pc.setRemoteDescription(new RTCSessionDescription(signal.offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    sendSignal(senderId, { type: "answer", answer });
+  } else if (signal.type === "answer") {
+    const pc = peerConnections[senderId];
+    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(signal.answer));
+  } else if (signal.type === "candidate") {
+    const pc = peerConnections[senderId];
+    if (pc) await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+  }
+}
+
+function listenSignals() {
+  const q = collection(db, "game_rooms", roomId, "signals");
+  unsubscribeSignals = onSnapshot(q, (snap) => {
+    snap.docChanges().forEach((change) => {
+      if (change.type === "added") {
+        const data = change.doc.data();
+        if (data.target === myId) {
+          handleSignalData(data.sender, JSON.parse(data.data));
+          deleteDoc(change.doc.ref).catch(() => {});
+        }
+      }
+    });
+  });
+}
+
+function closePeer(peerId) {
+  if (dataChannels[peerId]) { dataChannels[peerId].close(); delete dataChannels[peerId]; }
+  if (peerConnections[peerId]) { peerConnections[peerId].close(); delete peerConnections[peerId]; }
+}
+
+window.sendP2P = function(data) {
+  const payload = JSON.stringify(data);
+  Object.values(dataChannels).forEach(dc => {
+    if (dc && dc.readyState === "open") dc.send(payload);
+  });
+};
+
+function updateP2pLog() {
+  const activeCount = Object.keys(dataChannels).filter(id => dataChannels[id].readyState === "open").length;
+  p2pLog.textContent = `P2P 직접 연결 피어: ${activeCount}명`;
+}
+
+createRoomBtn.addEventListener("click", async () => {
+  myName = nameInput.value.trim();
+  if (!myName) return alert("닉네임을 입력하세요.");
+  createRoomBtn.disabled = true;
+  await cleanupRooms();
+
+  roomId = Math.floor(100000 + Math.random() * 900000).toString();
+  myId = "p_" + Date.now();
+  isHost = true;
+
+  try {
+    await setDoc(doc(db, "game_rooms", roomId), { status: "waiting", hostId: myId, lastActive: serverTimestamp() });
+    await setDoc(doc(db, "game_rooms", roomId, "players", myId), { name: myName, isHost: true, isReady: true });
+    enterLobby();
+  } catch(e) { alert("방 생성 실패"); }
+  finally { createRoomBtn.disabled = false; }
+});
+
+joinRoomBtn.addEventListener("click", async () => {
+  myName = nameInput.value.trim();
+  roomId = joinCodeInput.value.trim();
+  if (!myName || !/^\d{6}$/.test(roomId)) return alert("입력 정보 확인 필요");
+  joinRoomBtn.disabled = true;
+
+  try {
+    const roomSnap = await getDoc(doc(db, "game_rooms", roomId));
+    if (!roomSnap.exists() || roomSnap.data().status !== "waiting") return alert("입장 불가 방입니다.");
+    myId = "p_" + Date.now();
+    isHost = false;
+    await setDoc(doc(db, "game_rooms", roomId, "players", myId), { name: myName, isHost: false, isReady: false });
+    enterLobby();
+  } catch(e) { alert("방 참가 실패"); }
+  finally { joinRoomBtn.disabled = false; }
+});
+
+function enterLobby() {
+  loginCard.style.display = "none";
+  lobbyCard.style.display = "block";
+  roomNoElem.textContent = roomId;
+  readyBtn.style.display = isHost ? "none" : "block";
+  startBtn.style.display = isHost ? "block" : "none";
+
+  listenSignals();
+
+  unsubscribeRoom = onSnapshot(doc(db, "game_rooms", roomId), (snap) => {
+    if (!snap.exists()) return leaveRoom();
+    const data = snap.data();
+    if (data.status === "playing" && gameCard.style.display !== "block") startGameUI();
+    else if (data.status === "waiting" && gameCard.style.display === "block") returnToLobbyUI();
+  });
+
+  unsubscribePlayers = onSnapshot(collection(db, "game_rooms", roomId, "players"), (snap) => {
+    playerListElem.innerHTML = "";
+    playerList = [];
+    let allReady = true;
+
+    snap.forEach(d => {
+      const pData = d.data();
+      playerList.push({ id: d.id, name: pData.name, isHost: pData.isHost, isReady: pData.isReady });
+      if (!pData.isReady) allReady = false;
+      if (d.id !== myId && !peerConnections[d.id] && myId < d.id) initPeerConnection(d.id, true);
+
+      const item = document.createElement("div");
+      item.className = `player-item ${d.id === myId ? 'is-me' : ''}`;
+      item.innerHTML = `<div><strong>${pData.name}</strong></div><div class="${pData.isReady ? 'badge-ready' : 'badge-waiting'}">${pData.isReady ? 'READY' : '대기중'}</div>`;
+      playerListElem.appendChild(item);
+    });
+
+    if (isHost) startBtn.disabled = !(playerList.length >= 2 && allReady);
+  });
+}
+
+readyBtn.addEventListener("click", async () => {
+  isReady = !isReady;
+  readyBtn.textContent = isReady ? "준비 취소" : "준비 (Ready)";
+  readyBtn.classList.toggle("is-ready", isReady);
+  await updateDoc(doc(db, "game_rooms", roomId, "players", myId), { isReady });
+});
+
+startBtn.addEventListener("click", async () => {
+  await updateDoc(doc(db, "game_rooms", roomId), { status: "playing", lastActive: serverTimestamp() });
+});
+
+function startGameUI() {
+  lobbyCard.style.display = "none";
+  gameCard.style.display = "block";
+  Game.setupUI();
+  if (isHost) startNewRound();
+}
+
+function returnToLobbyUI() {
+  gameCard.style.display = "none";
+  lobbyCard.style.display = "block";
+}
+
+function startNewRound() {
+  gameData = Game.createInitialState();
+  currentTurnIndex = 0;
+  isGameOver = false;
+  broadcastGameState("루미큐브 게임이 시작되었습니다!");
+}
+
+function broadcastGameState(msg = "") {
+  if (!isHost) return;
+  const payload = { type: "STATE_UPDATE", gameData, currentTurnIndex, roundCount, isGameOver, playerList, message: msg };
+  applyGameState(payload);
+  window.sendP2P(payload);
+}
+
+function applyGameState(data) {
+  gameData = data.gameData;
+  currentTurnIndex = data.currentTurnIndex;
+  isGameOver = data.isGameOver;
+  playerList = data.playerList;
+  statusMessage.textContent = data.message;
+
+  const currentTurnPlayer = playerList[currentTurnIndex];
+  const isMyTurn = !!currentTurnPlayer && currentTurnPlayer.id === myId;
+  if (currentTurnPlayer) {
+    turnDisplay.textContent = isMyTurn ? "🎯 내 차례!" : `👤 ${currentTurnPlayer.name}의 차례`;
+    turnDisplay.style.color = isMyTurn ? "#16a34a" : "#38bdf8";
+  }
+
+  inGamePlayerList.innerHTML = "";
+  playerList.forEach((p, idx) => {
+    const item = document.createElement("div");
+    item.className = `player-item ${p.id === myId ? 'is-me' : ''} ${idx === currentTurnIndex ? 'is-turn' : ''}`;
+    item.style.padding = "4px 8px";
+    item.innerHTML = `<span>${p.name}</span><strong>타일 ${gameData.racks?.[p.id]?.length || 0}개</strong>`;
+    inGamePlayerList.appendChild(item);
+  });
+
+  Game.render(gameData, playerList, myId, isMyTurn);
+}
+
+function sendGameAction(action) {
+  const currentTurnPlayer = playerList[currentTurnIndex];
+  if (!currentTurnPlayer || currentTurnPlayer.id !== myId || isGameOver) return;
+
+  if (isHost) processAction(action, myId);
+  else window.sendP2P({ type: "GAME_ACTION", senderId: myId, action });
+}
+window.sendGameAction = sendGameAction;
+
+function processAction(action, senderId) {
+  if (!isHost || isGameOver) return;
+  const result = Game.applyAction(gameData, action, senderId, playerList) || {};
+  gameData = result.newState !== undefined ? result.newState : gameData;
+  isGameOver = !!result.isGameOver;
+
+  if (!isGameOver && result.advanceTurn !== false) {
+    currentTurnIndex = (currentTurnIndex + 1) % playerList.length;
+  }
+  broadcastGameState(result.message || "");
+}
+
+function onP2PMessage(senderId, data) {
+  if (data.type === "GAME_ACTION" && isHost) {
+    if (playerList[currentTurnIndex]?.id === senderId) processAction(data.action, senderId);
+  } else if (data.type === "STATE_UPDATE") {
+    applyGameState(data);
+  }
+}
+
+async function leaveRoom() {
+  if (unsubscribeRoom) unsubscribeRoom();
+  if (unsubscribePlayers) unsubscribePlayers();
+  if (unsubscribeSignals) unsubscribeSignals();
+  closePeer();
+
+  if (roomId && myId) {
+    try {
+      await deleteDoc(doc(db, "game_rooms", roomId, "players", myId));
+    } catch (e) {}
+  }
+  loginCard.style.display = "block";
+  lobbyCard.style.display = "none";
+  gameCard.style.display = "none";
+}
+
+leaveBtn.addEventListener("click", leaveRoom);
+exitGameBtn.addEventListener("click", () => updateDoc(doc(db, "game_rooms", roomId), { status: "waiting" }));
+joinCodeInput.addEventListener("input", function() { this.value = this.value.replace(/\D/g, "").slice(0, 6); });
+</script>
+</body>
+</html>
