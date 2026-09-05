@@ -3,164 +3,45 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>루미큐브 Stage 1</title>
-
+<title>루미큐브 Stage2</title>
 <style>
-body{
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-    background:#f1f5f9;
-    margin:0;
-    padding:20px;
-}
-.wrap{
-    max-width:720px;
-    margin:auto;
-}
-.card{
-    background:white;
-    border-radius:16px;
-    padding:20px;
-    box-shadow:0 4px 12px rgba(0,0,0,.08);
-}
-h1{
-    text-align:center;
-    margin:0 0 8px;
-}
-p{
-    text-align:center;
-    color:#64748b;
-}
-.info{
-    display:flex;
-    justify-content:space-between;
-    font-weight:bold;
-    margin:18px 0;
-}
-.grid{
-    display:grid;
-    grid-template-columns:repeat(7,1fr);
-    gap:8px;
-}
-.tile{
-    height:58px;
-    border-radius:10px;
-    background:white;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    font-size:24px;
-    font-weight:bold;
-    border:2px solid;
-}
-button{
-    width:100%;
-    margin-top:18px;
-    padding:14px;
-    border:none;
-    border-radius:10px;
-    background:#2563eb;
-    color:white;
-    font-size:16px;
-    font-weight:bold;
-}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#eef2f7;margin:0;padding:20px}
+.wrap{max-width:760px;margin:auto}
+.card{background:#fff;border-radius:16px;padding:20px;box-shadow:0 4px 12px rgba(0,0,0,.08)}
+h1{text-align:center;margin:0 0 6px} p{text-align:center;color:#64748b}
+#board{min-height:90px;border:2px dashed #cbd5e1;border-radius:12px;padding:10px;margin:14px 0}
+.group{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.tile{height:58px;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;border:2px solid;cursor:pointer}
+.selected{background:#dbeafe!important;border-color:#2563eb!important;transform:scale(1.05)}
+.info{display:flex;justify-content:space-between;font-weight:700;margin:12px 0}
+button{width:100%;padding:14px;margin-top:10px;border:none;border-radius:10px;background:#2563eb;color:#fff;font-size:16px;font-weight:700}
+.gray{background:#64748b}
 </style>
 </head>
-
 <body>
-
-<div class="wrap">
-  <div class="card">
-
-    <h1>🎲 루미큐브 Stage 1</h1>
-    <p>106장 생성 · 셔플 · 14장 자동 배분</p>
-
-    <div class="info">
-      <span>남은 타일 <span id="remain">0</span>장</span>
-      <span>내 패 14장</span>
-    </div>
-
-    <div class="grid" id="hand"></div>
-
-    <button onclick="deal()">새로 셔플하기</button>
-
-  </div>
-</div>
-
+<div class="wrap"><div class="card">
+<h1>🎲 루미큐브 Stage 2</h1>
+<p>106장 생성 · 셔플 · 14장 배분 · 선택 후 보드 배치</p>
+<div class="info"><span>남은 타일 <span id="remain">0</span>장</span><span>내 패 <span id="count">14</span>장</span></div>
+<h3>보드</h3><div id="board"></div>
+<h3>내 패</h3><div class="grid" id="hand"></div>
+<button onclick="placeTiles()">선택한 타일 놓기</button>
+<button class="gray" onclick="deal()">새 게임</button>
+</div></div>
 <script>
-const COLORS=[
-  {name:"red",hex:"#dc2626"},
-  {name:"blue",hex:"#2563eb"},
-  {name:"yellow",hex:"#ca8a04"},
-  {name:"black",hex:"#111827"}
-];
-
-// 106장 생성
-function makeTiles(){
-  const tiles=[];
-  let id=0;
-
-  for(let set=0; set<2; set++){
-    for(const c of COLORS){
-      for(let n=1; n<=13; n++){
-        tiles.push({
-          id:"t"+id++,
-          color:c.name,
-          hex:c.hex,
-          number:n,
-          joker:false
-        });
-      }
-    }
-  }
-
-  tiles.push({id:"j1",joker:true});
-  tiles.push({id:"j2",joker:true});
-
-  return tiles;
-}
-
-// 셔플
-function shuffle(arr){
-  const a=[...arr];
-  for(let i=a.length-1;i>0;i--){
-    const j=Math.floor(Math.random()*(i+1));
-    [a[i],a[j]]=[a[j],a[i]];
-  }
-  return a;
-}
-
-// 14장 배분
-function deal(){
-  const bag=shuffle(makeTiles());
-  const hand=bag.splice(0,14);
-
-  document.getElementById("remain").textContent=bag.length;
-
-  const handDiv=document.getElementById("hand");
-  handDiv.innerHTML="";
-
-  hand.forEach(tile=>{
-
-    const div=document.createElement("div");
-    div.className="tile";
-
-    if(tile.joker){
-      div.style.borderColor="#7c3aed";
-      div.style.color="#7c3aed";
-      div.textContent="★";
-    }else{
-      div.style.borderColor=tile.hex;
-      div.style.color=tile.hex;
-      div.textContent=tile.number;
-    }
-
-    handDiv.appendChild(div);
-  });
-}
-
-// 시작 시 자동 배분
+const COLORS=[{n:"red",h:"#dc2626"},{n:"blue",h:"#2563eb"},{n:"yellow",h:"#ca8a04"},{n:"black",h:"#111827"}];
+let hand=[],board=[],bag=[],selected=[];
+function makeTiles(){const t=[];let id=0;for(let s=0;s<2;s++)for(const c of COLORS)for(let i=1;i<=13;i++)t.push({id:"t"+id++,color:c.n,hex:c.h,num:i,j:false});t.push({id:"j1",j:true},{id:"j2",j:true});return t}
+function shuffle(a){a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function deal(){bag=shuffle(makeTiles());hand=bag.splice(0,14);board=[];selected=[];render()}
+function toggle(id){selected=selected.includes(id)?selected.filter(x=>x!==id):[...selected,id];renderHand()}
+function placeTiles(){if(!selected.length)return;const g=[];hand=hand.filter(t=>selected.includes(t.id)?(g.push(t),false):true);board.push(g);selected=[];render()}
+function tileDiv(t){const d=document.createElement("div");d.className="tile";d.style.borderColor=t.j?"#7c3aed":t.hex;d.style.color=t.j?"#7c3aed":t.hex;d.textContent=t.j?"★":t.num;return d}
+function renderHand(){const el=document.getElementById("hand");el.innerHTML="";hand.forEach(t=>{const d=tileDiv(t);if(selected.includes(t.id))d.classList.add("selected");d.onclick=()=>toggle(t.id);el.appendChild(d)});count.textContent=hand.length}
+function renderBoard(){const el=document.getElementById("board");el.innerHTML="";if(!board.length){el.innerHTML="<div style='color:#94a3b8'>보드가 비어 있습니다</div>";return;}board.forEach(g=>{const r=document.createElement("div");r.className="group";g.forEach(t=>r.appendChild(tileDiv(t)));el.appendChild(r)})}
+function render(){remain.textContent=bag.length;renderHand();renderBoard()}
 deal();
 </script>
-
 </body>
 </html>
