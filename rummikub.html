@@ -151,14 +151,18 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
 }
 .tile-group {
   background: rgba(255, 255, 255, 0.1);
-  border: 1px dashed rgba(255, 255, 255, 0.3);
+  border: 2px dashed rgba(255, 255, 255, 0.4);
   border-radius: 8px;
-  padding: 4px 6px;
+  padding: 6px 8px;
   display: flex;
   flex-wrap: wrap;
-  min-width: 50px;
-  min-height: 58px;
+  min-width: 60px;
+  min-height: 62px;
   align-items: center;
+  cursor: pointer;
+}
+.tile-group:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 .rack-container {
   margin-top: 12px;
@@ -244,7 +248,7 @@ const db = getFirestore(app);
 let localSelection = null; // { type: 'rack' | 'board', tileId, groupIdx }
 
 const Game = {
-  createInitialState() {
+  createInitialState(players) {
     const colors = ['red', 'blue', 'yellow', 'black'];
     let pool = [];
     let tileId = 1;
@@ -264,12 +268,22 @@ const Game = {
       [pool[i], pool[j]] = [pool[j], pool[i]];
     }
 
+    const racks = {};
+    const initialMelded = {};
+
+    // 게임 시작 시 모든 플레이어에게 14장씩 분배
+    (players || playerList).forEach(p => {
+      racks[p.id] = pool.splice(0, 14);
+      initialMelded[p.id] = false;
+    });
+
     return {
       pool: pool,
-      board: [],         // 타일 그룹들의 배열: [[tile1, tile2], ...]
-      turnStartBoard: [],// 이번 턴 시작 시점의 보드 (롤백용)
-      racks: {},         // { playerId: [tile1, tile2, ...] }
-      initialMelded: {}  // { playerId: boolean } (등록 30점 유무)
+      board: [],             // 바닥 보드 타일 그룹들
+      turnStartBoard: [],    // 턴 시작 시점의 보드 복사본 (원복용)
+      turnStartRacks: JSON.parse(JSON.stringify(racks)), // 턴 시작 시점 받침대 복사본
+      racks: racks,          // { playerId: [tile1, tile2, ...] }
+      initialMelded: initialMelded
     };
   },
 
@@ -303,62 +317,54 @@ const Game = {
     };
 
     document.getElementById("btnReset").onclick = () => {
+      localSelection = null;
       window.sendGameAction({ type: "RESET_TURN" });
     };
 
     document.getElementById("btnDraw").onclick = () => {
+      localSelection = null;
       window.sendGameAction({ type: "DRAW_TILE" });
     };
 
     document.getElementById("btnSubmit").onclick = () => {
+      localSelection = null;
       window.sendGameAction({ type: "SUBMIT_TURN" });
     };
   },
 
   applyAction(state, action, senderId, playerList) {
-    // 1. 플레이어 초기화 (14장씩 나누어주기)
-    playerList.forEach(p => {
-      if (!state.racks[p.id]) {
-        state.racks[p.id] = state.pool.splice(0, 14);
-        state.initialMelded[p.id] = false;
-      }
-    });
-
-    if (state.turnStartBoard.length === 0 && state.board.length > 0) {
-      state.turnStartBoard = JSON.parse(JSON.stringify(state.board));
-    }
-
     const player = playerList.find(p => p.id === senderId);
 
     // [Action: 타일 뽑기]
     if (action.type === "DRAW_TILE") {
+      // 턴 시작 시점으로 보드/받침대 원복
+      state.board = JSON.parse(JSON.stringify(state.turnStartBoard));
+      state.racks = JSON.parse(JSON.stringify(state.turnStartRacks));
+
       if (state.pool.length > 0) {
         const drawn = state.pool.pop();
         state.racks[senderId].push(drawn);
       }
-      // 턴 원복 후 다음 턴
-      if (state.turnStartBoard.length > 0) {
-        state.board = JSON.parse(JSON.stringify(state.turnStartBoard));
-      }
-      state.turnStartBoard = [];
+
+      // 다음 턴 대비 스냅샷 갱신
+      state.turnStartBoard = JSON.parse(JSON.stringify(state.board));
+      state.turnStartRacks = JSON.parse(JSON.stringify(state.racks));
+
       return { newState: state, message: `${player.name}님이 타일을 1장 뽑았습니다.`, advanceTurn: true };
     }
 
     // [Action: 턴 원복]
     if (action.type === "RESET_TURN") {
-      if (state.turnStartBoard) {
-        // 보드 원복 및 이번 턴에 낸 타일 다시 받침대로
-        state.board = JSON.parse(JSON.stringify(state.turnStartBoard));
-      }
-      return { newState: state, message: `${player.name}님이 배치를 초기화했습니다.`, advanceTurn: false };
+      state.board = JSON.parse(JSON.stringify(state.turnStartBoard));
+      state.racks = JSON.parse(JSON.stringify(state.turnStartRacks));
+      return { newState: state, message: `${player.name}님이 배치를 원복했습니다.`, advanceTurn: false };
     }
 
     // [Action: 타일 이동/배치]
     if (action.type === "MOVE_TILE") {
-      const { src, dest } = action; // src, dest 정보
+      const { src, dest } = action;
       let tile = null;
 
-      // 소스에서 타일 제거
       if (src.type === 'rack') {
         const idx = state.racks[senderId].findIndex(t => t.id === src.tileId);
         if (idx !== -1) tile = state.racks[senderId].splice(idx, 1)[0];
@@ -368,13 +374,11 @@ const Game = {
           const idx = group.findIndex(t => t.id === src.tileId);
           if (idx !== -1) {
             tile = group.splice(idx, 1)[0];
-            if (group.length === 0) state.board.splice(src.groupIdx, 1);
           }
         }
       }
 
       if (tile) {
-        // 목적지에 타일 추가
         if (dest.type === 'newGroup') {
           state.board.push([tile]);
         } else if (dest.type === 'group') {
@@ -383,15 +387,23 @@ const Game = {
           }
         }
       }
+
+      // 빈 그룹 정리
+      state.board = state.board.filter(g => g && g.length > 0);
       return { newState: state, message: "", advanceTurn: false };
     }
 
     // [Action: 턴 완료 제출]
     if (action.type === "SUBMIT_TURN") {
-      // 1. 빈 그룹 제거
-      state.board = state.board.filter(g => g.length > 0);
+      state.board = state.board.filter(g => g && g.length > 0);
 
-      // 2. 보드의 모든 그룹 규칙 검증
+      // 변화가 전혀 없는 경우 (패도 안 내고 제출만 누름)
+      const boardChanged = JSON.stringify(state.board) !== JSON.stringify(state.turnStartBoard);
+      if (!boardChanged) {
+        return { newState: state, message: "⚠️ 패를 내거나 타일을 1장 뽑아야 합니다.", advanceTurn: false };
+      }
+
+      // 1. 모든 그룹 규칙 검증
       let allValid = true;
       for (let group of state.board) {
         if (!Game.isValidGroup(group)) {
@@ -401,14 +413,14 @@ const Game = {
       }
 
       if (!allValid) {
-        return { newState: state, message: "⚠️ 보드의 타일 조합이 유효하지 않습니다! (3장 이상의 Run/Group)", advanceTurn: false };
+        return { newState: state, message: "⚠️ 올바르지 않은 타일 조합이 있습니다! (3장 이상의 Group 또는 Run)", advanceTurn: false };
       }
 
-      // 3. 최초 등록(Initial Meld) 규칙 검증 (30점 이상)
+      // 2. 등록(Initial Meld) 30점 조건 검증
       if (!state.initialMelded[senderId]) {
-        const isMeldValid = Game.checkInitialMeld(state.turnStartBoard, state.board);
+        const isMeldValid = Game.checkInitialMeld(state.turnStartBoard, state.board, state.turnStartRacks[senderId], state.racks[senderId]);
         if (!isMeldValid) {
-          return { newState: state, message: "⚠️ 첫 등록은 등록한 타일의 합이 30점 이상이어야 합니다!", advanceTurn: false };
+          return { newState: state, message: "⚠️ 첫 등록은 새로 낸 타일의 합이 30점 이상이어야 합니다!", advanceTurn: false };
         }
         state.initialMelded[senderId] = true;
       }
@@ -418,21 +430,23 @@ const Game = {
         return { newState: state, message: `🎉 ${player.name}님이 모든 타일을 사용하여 승리했습니다!`, isGameOver: true };
       }
 
+      // 성공 시 스냅샷 저장 후 턴 넘김
       state.turnStartBoard = JSON.parse(JSON.stringify(state.board));
-      return { newState: state, message: `${player.name}님이 턴을 마쳤습니다.`, advanceTurn: true };
+      state.turnStartRacks = JSON.parse(JSON.stringify(state.racks));
+      return { newState: state, message: `${player.name}님이 턴을 완료했습니다.`, advanceTurn: true };
     }
 
     return { newState: state, message: "", advanceTurn: false };
   },
 
-  // 그룹 유효성 검사 (Run 또는 Group)
+  // 그룹 유효성 검사 (Group / Run)
   isValidGroup(group) {
-    if (group.length < 3) return false;
+    if (!group || group.length < 3) return false;
 
     const nonJokers = group.filter(t => !t.isJoker);
-    if (nonJokers.length === 0) return true; // 조커만 있는 경우 인정
+    if (nonJokers.length === 0) return true;
 
-    // 1. Group 테스트 (숫자 동일, 색상 모두 다름)
+    // 1. Group (동일 숫자, 서로 다른 색상)
     const sameNum = nonJokers.every(t => t.num === nonJokers[0].num);
     if (sameNum) {
       const colors = nonJokers.map(t => t.color);
@@ -440,21 +454,12 @@ const Game = {
       if (colors.length === uniqueColors.size && group.length <= 4) return true;
     }
 
-    // 2. Run 테스트 (색상 동일, 연속된 숫자)
+    // 2. Run (동일 색상, 연속된 숫자)
     const sameColor = nonJokers.every(t => t.color === nonJokers[0].color);
     if (sameColor) {
-      // 숫자 정렬 후 연속 여부 확인
-      let copy = [...group].sort((a, b) => {
-        if (a.isJoker) return 0;
-        if (b.isJoker) return 0;
-        return a.num - b.num;
-      });
-
-      // 간단 검증: 최소값과 최대값 범위 체크
       let nums = nonJokers.map(t => t.num).sort((a, b) => a - b);
       let min = nums[0];
       let max = nums[nums.length - 1];
-      let jokerCount = group.length - nonJokers.length;
 
       if (max - min < group.length && (new Set(nums)).size === nums.length) {
         return true;
@@ -465,16 +470,22 @@ const Game = {
   },
 
   // 첫 등록 30점 검증
-  checkInitialMeld(oldBoard, newBoard) {
-    // 단순화 구현: 새로 추가된 그룹의 숫자 합산
-    let sum = 0;
-    for (let group of newBoard) {
-      if (Game.isValidGroup(group)) {
-        for (let tile of group) {
-          sum += tile.isJoker ? 10 : tile.num;
-        }
+  checkInitialMeld(oldBoard, newBoard, oldRack, newRack) {
+    // 이번 턴에 내 받침대에서 보드로 나간 타일 추출
+    const usedTiles = [];
+    const newRackIds = newRack.map(t => t.id);
+
+    oldRack.forEach(t => {
+      if (!newRackIds.includes(t.id)) {
+        usedTiles.push(t);
       }
-    }
+    });
+
+    let sum = 0;
+    usedTiles.forEach(t => {
+      sum += t.isJoker ? 10 : t.num;
+    });
+
     return sum >= 30;
   },
 
@@ -489,7 +500,7 @@ const Game = {
     boardArea.innerHTML = "";
     rackArea.innerHTML = "";
 
-    // 1. 보드 타일 그룹 그리기
+    // 1. 보드 그리기
     (state.board || []).forEach((group, groupIdx) => {
       const gDiv = document.createElement("div");
       gDiv.className = "tile-group";
@@ -499,16 +510,18 @@ const Game = {
         if (localSelection && localSelection.tileId === tile.id) tDiv.classList.add("selected");
 
         tDiv.onclick = (e) => {
-          e.stopPropagation();
+          e.stopPropagation(); // 이벤트 전파 차단
           if (!isMyTurn) return;
           Game.handleTileClick({ type: 'board', tileId: tile.id, groupIdx });
         };
         gDiv.appendChild(tDiv);
       });
 
-      // 그룹 클릭 시 타일 이동 목적지로 지정
-      gDiv.onclick = () => {
+      // 그룹 클릭 시 해당 그룹에 선택 타일 합치기
+      gDiv.onclick = (e) => {
+        e.stopPropagation(); // 이벤트 전파 차단
         if (!isMyTurn || !localSelection) return;
+
         window.sendGameAction({
           type: "MOVE_TILE",
           src: localSelection,
@@ -520,9 +533,9 @@ const Game = {
       boardArea.appendChild(gDiv);
     });
 
-    // 새 그룹 생성 영역 클릭 이벤트
-    boardArea.onclick = (e) => {
-      if (e.target !== boardArea || !isMyTurn || !localSelection) return;
+    // 보드 빈 바탕 클릭 시 새 그룹으로 추가
+    boardArea.onclick = () => {
+      if (!isMyTurn || !localSelection) return;
       window.sendGameAction({
         type: "MOVE_TILE",
         src: localSelection,
@@ -531,13 +544,14 @@ const Game = {
       localSelection = null;
     };
 
-    // 2. 내 받침대 타일 그리기
+    // 2. 내 받침대 그리기
     const myRack = (state.racks && state.racks[myId]) ? state.racks[myId] : [];
     myRack.forEach(tile => {
       const tDiv = Game.createTileElem(tile);
       if (localSelection && localSelection.tileId === tile.id) tDiv.classList.add("selected");
 
-      tDiv.onclick = () => {
+      tDiv.onclick = (e) => {
+        e.stopPropagation();
         if (!isMyTurn) return;
         Game.handleTileClick({ type: 'rack', tileId: tile.id });
       };
@@ -557,9 +571,9 @@ const Game = {
       localSelection = clickInfo;
     } else {
       if (localSelection.tileId === clickInfo.tileId) {
-        localSelection = null; // 선택 취소
+        localSelection = null;
       } else {
-        localSelection = clickInfo; // 다른 타일 선택 변경
+        localSelection = clickInfo;
       }
     }
     Game.render(gameData, playerList, myId, playerList[currentTurnIndex]?.id === myId);
@@ -811,7 +825,7 @@ function returnToLobbyUI() {
 }
 
 function startNewRound() {
-  gameData = Game.createInitialState();
+  gameData = Game.createInitialState(playerList);
   currentTurnIndex = 0;
   isGameOver = false;
   broadcastGameState("루미큐브 게임이 시작되었습니다!");
