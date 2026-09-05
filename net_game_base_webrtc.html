@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Network Game Template with WebRTC P2P</title>
+<title>P2P Multiplayer Game Template</title>
 
 <style>
 * { box-sizing: border-box; }
@@ -57,7 +57,7 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
   margin: 10px 0;
 }
 
-/* 플레이어 목록 스타일 */
+/* 플레이어 목록 스타일 (로비 + 인게임 공용) */
 .player-list {
   display: flex;
   flex-direction: column;
@@ -74,6 +74,7 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
   border-radius: 8px;
 }
 .player-item.is-me { border-color: #2563eb; background: #eff6ff; }
+.player-item.is-turn { border: 2px solid #16a34a; background: #f0fdf4; }
 .tag {
   font-size: 12px;
   padding: 2px 6px;
@@ -91,26 +92,38 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
 .ready-btn { background: #16a34a; }
 .ready-btn.is-ready { background: #dc2626; }
 
-/* 게임 화면 영역 */
-#gameCanvas {
-  width: 100%;
-  height: 350px;
-  background: #0f172a;
-  border-radius: 12px;
+/* 공통 게임 화면 프레임 (게임별 UI는 #gameArea 안에 들어감) */
+.game-header {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
+  background: #0f172a;
   color: white;
-  font-size: 18px;
-  margin-top: 15px;
-  padding: 20px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  margin-bottom: 12px;
+}
+.turn-indicator {
+  font-weight: bold;
+  color: #38bdf8;
+}
+.status-message {
   text-align: center;
+  font-weight: bold;
+  font-size: 16px;
+  margin: 10px 0;
+  min-height: 24px;
 }
 .p2p-status {
-  font-size: 13px;
-  color: #38bdf8;
+  font-size: 12px;
+  color: #64748b;
+  text-align: center;
   margin-top: 8px;
+}
+
+/* ===== 게임별 UI 영역: 기본 여백만 지정, 스타일은 각 게임에서 추가 ===== */
+#gameArea {
+  margin: 12px 0;
 }
 </style>
 </head>
@@ -131,7 +144,7 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
 <div class="card" id="lobby">
   <h3>대기실</h3>
   <div class="room-code" id="roomNo">------</div>
-  
+
   <div class="player-list" id="playerList"></div>
 
   <button id="readyBtn" class="ready-btn">준비 (Ready)</button>
@@ -139,14 +152,24 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
   <button id="leaveBtn" class="leave-btn">방 나가기</button>
 </div>
 
-<!-- 3. 게임 화면 (게임별 구현 영역) -->
+<!-- 3. 게임 화면 (공통 프레임만 있고, 실제 게임 UI는 #gameArea 안에 주입됨) -->
 <div class="card" id="game">
-  <h3>게임 진행 중</h3>
-  <div id="gameCanvas">
-    <div>게임 화면 영역 (P2P 연결 완료)</div>
-    <div id="p2pLog" class="p2p-status">P2P 수신 데이터: 대기 중...</div>
+  <div class="game-header">
+    <div>라운드: <span id="roundDisplay">1</span></div>
+    <div class="turn-indicator" id="turnDisplay">대기 중...</div>
   </div>
-  <button id="testP2pBtn" style="margin-top: 10px; background: #8b5cf6;">P2P 패킷 테스트 전송</button>
+
+  <div class="player-list" id="inGamePlayerList" style="margin: 0 0 12px 0; gap: 4px;"></div>
+
+  <div class="status-message" id="statusMessage">게임을 시작합니다.</div>
+
+  <!-- ============================================================
+       ★ 게임별 UI는 여기에 주입됩니다.
+       Game.setupUI() 에서 innerHTML을 채우거나 DOM을 append 하세요.
+  ============================================================ -->
+  <div id="gameArea"></div>
+
+  <div id="p2pLog" class="p2p-status">P2P 연결 상태: 대기 중...</div>
   <button id="exitGameBtn" class="leave-btn">게임 종료 및 대기실 복귀</button>
 </div>
 
@@ -169,7 +192,52 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// 상태 변수
+/* ================================================================
+   ★★★ 게임 로직 플러그인 영역 ★★★
+   새 게임을 만들 때는 이 Game 객체의 함수들만 구현하면 됩니다.
+   방 생성/참가, 로비, WebRTC P2P 연결, 턴/라운드/상태 동기화 등
+   나머지 인프라는 건드릴 필요가 없습니다.
+
+   - createInitialState(): 라운드 시작 시 게임 전용 초기 상태 객체를 반환
+   - applyAction(state, action, senderId, playerList):
+       호스트에서만 호출됨. action을 검증/적용한 새 state를 계산.
+       return { newState, message, isGameOver, advanceTurn }
+       (advanceTurn을 false로 주면 턴이 안 넘어감. 기본값 true)
+   - render(state, playerList, myId, isMyTurn):
+       모든 클라이언트에서 상태가 바뀔 때마다 호출됨. #gameArea 내부 갱신.
+   - setupUI():
+       게임 화면 진입 시 1회 호출됨. #gameArea에 필요한 DOM(버튼 등) 생성.
+       버튼 클릭 등 이벤트 핸들러 안에서는 sendGameAction(action)을 호출해서
+       내 행동을 전송하면 됨 (호스트/게스트 구분은 엔진이 알아서 처리).
+================================================================ */
+const Game = {
+  createInitialState() {
+    // 예시: return { targetWord: pickWord(), guessedLetters: [] };
+    return {};
+  },
+
+  applyAction(state, action, senderId, playerList) {
+    // 예시:
+    // const player = playerList.find(p => p.id === senderId);
+    // ... state 갱신 ...
+    // return { newState: state, message: `${player.name}님이 행동함`, isGameOver: false };
+    return { newState: state, message: "", isGameOver: false };
+  },
+
+  render(state, playerList, myId, isMyTurn) {
+    // 예시: document.getElementById("gameArea").innerHTML = `...`;
+  },
+
+  setupUI() {
+    // 예시: 키보드/보드/카드 등 게임 전용 DOM을 gameArea에 생성
+    document.getElementById("gameArea").innerHTML =
+      `<p style="text-align:center;color:#94a3b8;">여기에 게임 UI를 구현하세요.</p>`;
+  }
+};
+/* ================================================================
+   ★★★ 플러그인 영역 끝 ★★★
+================================================================ */
+
 let roomId = "";
 let myId = "";
 let myName = "";
@@ -180,12 +248,17 @@ let unsubscribeRoom = null;
 let unsubscribePlayers = null;
 let unsubscribeSignals = null;
 
-// WebRTC 변수
 const rtcConfig = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-const peerConnections = {}; // { peerId: RTCPeerConnection }
-const dataChannels = {};     // { peerId: RTCDataChannel }
+const peerConnections = {};
+const dataChannels = {};
 
-// DOM 요소
+// ===== 공통(게임 무관) 상태 =====
+let playerList = [];
+let currentTurnIndex = 0;
+let roundCount = 1;
+let isGameOver = false;
+let gameData = {}; // Game.createInitialState()가 채우는, 게임별 불투명(opaque) 상태
+
 const loginCard = document.getElementById("login");
 const lobbyCard = document.getElementById("lobby");
 const gameCard = document.getElementById("game");
@@ -201,12 +274,13 @@ const readyBtn = document.getElementById("readyBtn");
 const startBtn = document.getElementById("startBtn");
 const leaveBtn = document.getElementById("leaveBtn");
 const exitGameBtn = document.getElementById("exitGameBtn");
-const testP2pBtn = document.getElementById("testP2pBtn");
+
+const turnDisplay = document.getElementById("turnDisplay");
+const roundDisplay = document.getElementById("roundDisplay");
+const statusMessage = document.getElementById("statusMessage");
+const inGamePlayerList = document.getElementById("inGamePlayerList");
 const p2pLog = document.getElementById("p2pLog");
 
-/* ==========================================
-   유틸리티: 방 cleanup (32개 제한 + 1시간 미활동)
-========================================== */
 async function cleanupRooms() {
   try {
     const snap = await getDocs(collection(db, "game_rooms"));
@@ -245,11 +319,6 @@ async function deleteRoom(rId) {
   await deleteDoc(doc(db, "game_rooms", rId));
 }
 
-/* ==========================================
-   WebRTC P2P 시그널링 모듈
-========================================== */
-
-// Firestore를 매개체로 연결 신호 전달 (Signal Document 쓰기)
 async function sendSignal(targetPeerId, signalData) {
   try {
     await addDoc(collection(db, "game_rooms", roomId, "signals"), {
@@ -261,7 +330,6 @@ async function sendSignal(targetPeerId, signalData) {
   } catch (e) { console.error("Signal send error:", e); }
 }
 
-// PeerConnection 생성 및 DataChannel 생성/수신
 async function initPeerConnection(targetPeerId, isInitiator) {
   if (peerConnections[targetPeerId]) return;
 
@@ -281,8 +349,7 @@ async function initPeerConnection(targetPeerId, isInitiator) {
   };
 
   if (isInitiator) {
-    // 액션 게임용 UDP 모드 DataChannel
-    const dc = pc.createDataChannel("gameChannel", { ordered: false, maxRetransmits: 0 });
+    const dc = pc.createDataChannel("gameChannel");
     setupDataChannel(targetPeerId, dc);
 
     const offer = await pc.createOffer();
@@ -295,18 +362,20 @@ async function initPeerConnection(targetPeerId, isInitiator) {
   }
 }
 
-// DataChannel 수신 및 이벤트 핸들러
 function setupDataChannel(peerId, channel) {
   dataChannels[peerId] = channel;
 
   channel.onopen = () => {
-    console.log(`[P2P Connected] -> ${peerId}`);
     updatePlayerP2PStatus(peerId, true);
+    updateP2pLog();
+    if (isHost) {
+      broadcastGameState("새 유저가 P2P 망에 접속했습니다.");
+    }
   };
 
   channel.onclose = () => {
-    console.log(`[P2P Closed] -> ${peerId}`);
     closePeer(peerId);
+    updateP2pLog();
   };
 
   channel.onmessage = (event) => {
@@ -314,7 +383,6 @@ function setupDataChannel(peerId, channel) {
   };
 }
 
-// 수신된 Signal 메시지 처리 (Offer / Answer / Candidate)
 async function handleSignalData(senderId, signal) {
   if (senderId === myId) return;
 
@@ -334,7 +402,6 @@ async function handleSignalData(senderId, signal) {
   }
 }
 
-// 시그널링 수신 리스너 (대기실 접속 시 구동)
 function listenSignals() {
   const q = collection(db, "game_rooms", roomId, "signals");
   unsubscribeSignals = onSnapshot(q, (snap) => {
@@ -343,13 +410,14 @@ function listenSignals() {
         const data = change.doc.data();
         if (data.target === myId) {
           handleSignalData(data.sender, JSON.parse(data.data));
+          // 처리한 시그널 문서는 즉시 삭제 (컬렉션 무한 증가 방지)
+          deleteDoc(change.doc.ref).catch(() => {});
         }
       }
     });
   });
 }
 
-// P2P 연결 종료 및 리소스 cleanup
 function closePeer(peerId) {
   if (dataChannels[peerId]) {
     dataChannels[peerId].close();
@@ -366,7 +434,6 @@ function closeAllPeers() {
   Object.keys(peerConnections).forEach(closePeer);
 }
 
-// 모든 피어에게 P2P 액션 데이터 브로드캐스트 전송
 window.sendP2P = function(data) {
   const payload = JSON.stringify(data);
   Object.values(dataChannels).forEach(dc => {
@@ -376,9 +443,11 @@ window.sendP2P = function(data) {
   });
 };
 
-/* ==========================================
-   1. 방 만들기
-========================================== */
+function updateP2pLog() {
+  const activeCount = Object.keys(dataChannels).filter(id => dataChannels[id].readyState === "open").length;
+  p2pLog.textContent = `P2P 직접 연결된 피어: ${activeCount}명`;
+}
+
 createRoomBtn.addEventListener("click", async () => {
   myName = nameInput.value.trim();
   if (!myName) return alert("닉네임을 입력하세요.");
@@ -390,29 +459,30 @@ createRoomBtn.addEventListener("click", async () => {
   myId = "p_" + Date.now();
   isHost = true;
 
-  // 방 생성
-  await setDoc(doc(db, "game_rooms", roomId), {
-    status: "waiting",
-    hostId: myId,
-    created: serverTimestamp(),
-    lastActive: serverTimestamp()
-  });
+  try {
+    await setDoc(doc(db, "game_rooms", roomId), {
+      status: "waiting",
+      hostId: myId,
+      created: serverTimestamp(),
+      lastActive: serverTimestamp()
+    });
 
-  // 호스트 플레이어 추가
-  await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
-    name: myName,
-    isHost: true,
-    isReady: true,
-    joinedAt: serverTimestamp()
-  });
+    await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
+      name: myName,
+      isHost: true,
+      isReady: true,
+      joinedAt: serverTimestamp()
+    });
 
-  enterLobby();
-  createRoomBtn.disabled = false;
+    enterLobby();
+  } catch(e) {
+    console.error("방 생성 오류:", e);
+    alert("방 생성 중 오류가 발생했습니다.");
+  } finally {
+    createRoomBtn.disabled = false;
+  }
 });
 
-/* ==========================================
-   2. 방 참가하기
-========================================== */
 joinRoomBtn.addEventListener("click", async () => {
   myName = nameInput.value.trim();
   roomId = joinCodeInput.value.trim();
@@ -421,47 +491,49 @@ joinRoomBtn.addEventListener("click", async () => {
   if (!/^\d{6}$/.test(roomId)) return alert("6자리 방번호를 입력하세요.");
 
   joinRoomBtn.disabled = true;
-  await cleanupRooms();
 
-  const roomRef = doc(db, "game_rooms", roomId);
-  const roomSnap = await getDoc(roomRef);
+  try {
+    const roomRef = doc(db, "game_rooms", roomId);
+    const roomSnap = await getDoc(roomRef);
 
-  if (!roomSnap.exists()) {
+    if (!roomSnap.exists()) {
+      alert("존재하지 않는 방입니다.");
+      return;
+    }
+
+    if (roomSnap.data().status !== "waiting") {
+      alert("이미 게임이 진행 중인 방입니다.");
+      return;
+    }
+
+    const playersSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
+    if (playersSnap.size >= 4) {
+      alert("방이 가득 차서 입장할 수 없습니다. (최대 4인)");
+      return;
+    }
+
+    myId = "p_" + Date.now();
+    isHost = false;
+    isReady = false;
+
+    await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
+      name: myName,
+      isHost: false,
+      isReady: false,
+      joinedAt: serverTimestamp()
+    });
+
+    await updateDoc(roomRef, { lastActive: serverTimestamp() });
+
+    enterLobby();
+  } catch(e) {
+    console.error("방 참가 오류:", e);
+    alert("방 참가 도중 오류가 발생했습니다.");
+  } finally {
     joinRoomBtn.disabled = false;
-    return alert("존재하지 않는 방입니다.");
   }
-
-  if (roomSnap.data().status !== "waiting") {
-    joinRoomBtn.disabled = false;
-    return alert("이미 게임이 진행 중인 방입니다.");
-  }
-
-  const playersSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
-  if (playersSnap.size >= 4) {
-    joinRoomBtn.disabled = false;
-    return alert("방이 가득 차서 입장할 수 없습니다. (최대 4인)");
-  }
-
-  myId = "p_" + Date.now();
-  isHost = false;
-  isReady = false;
-
-  await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
-    name: myName,
-    isHost: false,
-    isReady: false,
-    joinedAt: serverTimestamp()
-  });
-
-  await updateDoc(roomRef, { lastActive: serverTimestamp() });
-
-  enterLobby();
-  joinRoomBtn.disabled = false;
 });
 
-/* ==========================================
-   3. 대기실 로직 & 실시간 동기화 + WebRTC 초기화
-========================================== */
 function enterLobby() {
   loginCard.style.display = "none";
   gameCard.style.display = "none";
@@ -476,10 +548,8 @@ function enterLobby() {
     startBtn.style.display = "none";
   }
 
-  // P2P 시그널링 수신 리스너 시작
   listenSignals();
 
-  // 방 상태 감시
   unsubscribeRoom = onSnapshot(doc(db, "game_rooms", roomId), (snap) => {
     if (!snap.exists()) {
       alert("방이 삭제되었습니다.");
@@ -487,56 +557,56 @@ function enterLobby() {
       return;
     }
     const data = snap.data();
-    if (data.status === "playing") {
+    if (data.status === "playing" && gameCard.style.display !== "block") {
       startGameUI();
+    } else if (data.status === "waiting" && gameCard.style.display === "block") {
+      returnToLobbyUI();
     }
   });
 
-  // 플레이어 목록 감시 및 P2P 연결 시도
   const playersQuery = collection(db, "game_rooms", roomId, "players");
   unsubscribePlayers = onSnapshot(playersQuery, (snap) => {
     playerListElem.innerHTML = "";
-    let players = [];
-
-    snap.forEach(d => players.push({ id: d.id, ...d.data() }));
+    playerList = [];
 
     let allReady = true;
-    
-    players.forEach(p => {
-      const isMe = p.id === myId;
-      if (!p.isReady) allReady = false;
 
-      // 새 플레이어가 나타났을 때 기존 유저/방장이 WebRTC Offer 전송 시작
-      if (!isMe && p.joinedAt && !peerConnections[p.id]) {
-        // ID 사전순 비교로 이중 연결 생성 방지
-        if (myId < p.id) {
-          initPeerConnection(p.id, true);
+    snap.forEach(d => {
+      const pData = d.data();
+      const pObj = { id: d.id, name: pData.name, isHost: pData.isHost, isReady: pData.isReady, score: 0 };
+      playerList.push(pObj);
+
+      const isMe = d.id === myId;
+      if (!pData.isReady) allReady = false;
+
+      if (!isMe && pData.joinedAt && !peerConnections[d.id]) {
+        if (myId < d.id) {
+          initPeerConnection(d.id, true);
         }
       }
 
-      const isConnectedP2P = !!dataChannels[p.id] && dataChannels[p.id].readyState === "open";
+      const isConnectedP2P = !!dataChannels[d.id] && dataChannels[d.id].readyState === "open";
 
       const item = document.createElement("div");
       item.className = "player-item" + (isMe ? " is-me" : "");
-      item.id = `player-${p.id}`;
-      
+      item.id = `player-${d.id}`;
+
       item.innerHTML = `
         <div>
-          <strong>${p.name}</strong>
-          ${p.isHost ? '<span class="tag host">방장</span>' : ''}
+          <strong>${pData.name}</strong>
+          ${pData.isHost ? '<span class="tag host">방장</span>' : ''}
           ${isMe ? '<span class="tag">나</span>' : ''}
-          <span class="tag p2p" id="p2p-badge-${p.id}" style="display: ${isConnectedP2P ? 'inline-block' : 'none'};">P2P연결됨</span>
+          <span class="tag p2p" id="p2p-badge-${d.id}" style="display: ${isConnectedP2P ? 'inline-block' : 'none'};">P2P연결됨</span>
         </div>
-        <div class="${p.isReady ? 'badge-ready' : 'badge-waiting'}">
-          ${p.isReady ? 'READY' : '대기중'}
+        <div class="${pData.isReady ? 'badge-ready' : 'badge-waiting'}">
+          ${pData.isReady ? 'READY' : '대기중'}
         </div>
       `;
       playerListElem.appendChild(item);
     });
 
     if (isHost) {
-      const readyToStart = players.length >= 2 && allReady;
-      startBtn.disabled = !readyToStart;
+      startBtn.disabled = !(playerList.length >= 2 && allReady);
     }
   });
 }
@@ -548,17 +618,12 @@ function updatePlayerP2PStatus(peerId, isConnected) {
   }
 }
 
-/* ==========================================
-   4. Ready & Start 핸들러
-========================================== */
 readyBtn.addEventListener("click", async () => {
   isReady = !isReady;
   readyBtn.textContent = isReady ? "준비 취소" : "준비 (Ready)";
   readyBtn.classList.toggle("is-ready", isReady);
 
-  await updateDoc(doc(db, "game_rooms", roomId, "players", myId), {
-    isReady: isReady
-  });
+  await updateDoc(doc(db, "game_rooms", roomId, "players", myId), { isReady: isReady });
 });
 
 startBtn.addEventListener("click", async () => {
@@ -568,40 +633,139 @@ startBtn.addEventListener("click", async () => {
   });
 });
 
-/* ==========================================
-   5. 게임 화면 전환 및 P2P 실시간 활용
-========================================== */
 function startGameUI() {
   lobbyCard.style.display = "none";
   gameCard.style.display = "block";
 
-  initCustomGame();
-}
+  Game.setupUI();
 
-function initCustomGame() {
-  const activePeers = Object.keys(dataChannels).filter(id => dataChannels[id].readyState === "open").length;
-  p2pLog.textContent = `P2P 연결 수: ${activePeers}명 / 데이터 수신 대기 중...`;
-}
-
-// P2P 수신 처리 콜백 (게임 화면 전용)
-function onP2PMessage(senderId, data) {
-  console.log(`[P2P Received from ${senderId}]`, data);
-  if (data.type === "ping") {
-    p2pLog.textContent = `[${new Date().toLocaleTimeString()}] ${senderId}에게서 메시지: ${data.msg}`;
+  if (isHost) {
+    startNewRound();
   }
-  
-  // Custom Game Message Handling
-  // 예: 위치 동기화, 액션 처리 등
+  updateP2pLog();
 }
 
-// P2P 테스트 버튼 클릭
-testP2pBtn.addEventListener("click", () => {
-  window.sendP2P({ type: "ping", msg: `테스트 패킷 (${myName})` });
-});
+function returnToLobbyUI() {
+  gameCard.style.display = "none";
+  lobbyCard.style.display = "block";
+}
 
-/* ==========================================
-   6. 퇴장 및 정리
-========================================== */
+// ===== 공통 라운드/상태 동기화 엔진 (게임 로직은 Game.* 로 위임) =====
+
+function startNewRound() {
+  gameData = Game.createInitialState();
+  currentTurnIndex = 0;
+  isGameOver = false;
+
+  broadcastGameState("라운드가 시작되었습니다!");
+}
+
+function broadcastGameState(msg = "") {
+  if (!isHost) return;
+
+  const statePayload = {
+    type: "STATE_UPDATE",
+    gameData,
+    currentTurnIndex,
+    roundCount,
+    isGameOver,
+    playerList,
+    message: msg
+  };
+
+  applyGameState(statePayload);
+  window.sendP2P(statePayload);
+}
+
+function applyGameState(data) {
+  gameData = data.gameData;
+  currentTurnIndex = data.currentTurnIndex;
+  roundCount = data.roundCount;
+  isGameOver = data.isGameOver;
+  playerList = data.playerList;
+
+  roundDisplay.textContent = roundCount;
+  statusMessage.textContent = data.message;
+
+  const currentTurnPlayer = playerList[currentTurnIndex];
+  const isMyTurn = !!currentTurnPlayer && currentTurnPlayer.id === myId;
+
+  if (currentTurnPlayer) {
+    turnDisplay.textContent = isMyTurn ? "🎯 내 차례!" : `👤 ${currentTurnPlayer.name}의 차례`;
+    turnDisplay.style.color = isMyTurn ? "#16a34a" : "#38bdf8";
+  }
+
+  renderInGamePlayerList();
+
+  // ★ 게임별 화면 갱신은 여기서 위임
+  Game.render(gameData, playerList, myId, isMyTurn);
+}
+
+function renderInGamePlayerList() {
+  inGamePlayerList.innerHTML = "";
+  playerList.forEach((p, idx) => {
+    const isTurn = idx === currentTurnIndex;
+    const isMe = p.id === myId;
+    const item = document.createElement("div");
+    item.className = `player-item ${isMe ? 'is-me' : ''} ${isTurn ? 'is-turn' : ''}`;
+    item.style.padding = "6px 10px";
+    item.innerHTML = `
+      <span>${p.name} ${isMe ? '(나)' : ''}</span>
+      <strong>${p.score || 0}점</strong>
+    `;
+    inGamePlayerList.appendChild(item);
+  });
+}
+
+// ★ 게임별 UI(버튼 등)의 이벤트 핸들러에서 이 함수를 호출해서
+//   "내 행동"을 전송하세요. 턴 체크, 호스트/게스트 라우팅은 엔진이 처리합니다.
+function sendGameAction(action) {
+  const currentTurnPlayer = playerList[currentTurnIndex];
+  if (!currentTurnPlayer || currentTurnPlayer.id !== myId || isGameOver) return;
+
+  if (isHost) {
+    processAction(action, myId);
+  } else {
+    window.sendP2P({
+      type: "GAME_ACTION",
+      senderId: myId,
+      action
+    });
+  }
+}
+window.sendGameAction = sendGameAction; // Game.setupUI()에서 만든 인라인 핸들러 등에서 쓰기 편하도록 전역 노출
+
+function processAction(action, senderId) {
+  if (!isHost || isGameOver) return;
+
+  const result = Game.applyAction(gameData, action, senderId, playerList) || {};
+  gameData = result.newState !== undefined ? result.newState : gameData;
+  isGameOver = !!result.isGameOver;
+
+  if (!isGameOver && result.advanceTurn !== false) {
+    currentTurnIndex = (currentTurnIndex + 1) % playerList.length;
+  }
+
+  broadcastGameState(result.message || "");
+
+  if (isGameOver) {
+    setTimeout(() => {
+      roundCount++;
+      startNewRound();
+    }, 4000);
+  }
+}
+
+function onP2PMessage(senderId, data) {
+  if (data.type === "GAME_ACTION" && isHost) {
+    if (playerList[currentTurnIndex]?.id === senderId) {
+      processAction(data.action, senderId);
+    }
+  } else if (data.type === "STATE_UPDATE") {
+    applyGameState(data);
+  }
+}
+
 async function leaveRoom() {
   if (unsubscribeRoom) unsubscribeRoom();
   if (unsubscribePlayers) unsubscribePlayers();
@@ -612,7 +776,7 @@ async function leaveRoom() {
   if (roomId && myId) {
     try {
       await deleteDoc(doc(db, "game_rooms", roomId, "players", myId));
-      
+
       const pSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
       if (pSnap.empty) {
         await deleteRoom(roomId);
@@ -634,11 +798,15 @@ async function leaveRoom() {
 }
 
 leaveBtn.addEventListener("click", leaveRoom);
+
 exitGameBtn.addEventListener("click", async () => {
-  if (isHost) {
-    await updateDoc(doc(db, "game_rooms", roomId), { status: "waiting" });
-  } else {
-    leaveRoom();
+  try {
+    await updateDoc(doc(db, "game_rooms", roomId), {
+      status: "waiting",
+      lastActive: serverTimestamp()
+    });
+  } catch (e) {
+    console.error("Exit game error:", e);
   }
 });
 
