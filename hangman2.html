@@ -205,7 +205,7 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
 <div class="card" id="lobby">
   <h3>대기실</h3>
   <div class="room-code" id="roomNo">------</div>
-  
+
   <div class="player-list" id="playerList"></div>
 
   <button id="readyBtn" class="ready-btn">준비 (Ready)</button>
@@ -228,7 +228,7 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
         <line x1="30" y1="110" x2="30" y2="10" />
         <line x1="30" y1="10" x2="70" y2="10" />
         <line x1="70" y1="10" x2="70" y2="25" />
-        
+
         <circle id="hang-head" cx="70" cy="35" r="10" style="display:none;" />
         <line id="hang-body" x1="70" y1="45" x2="70" y2="75" style="display:none;" />
         <line id="hang-armL" x1="70" y1="55" x2="55" y2="65" style="display:none;" />
@@ -464,6 +464,9 @@ function listenSignals() {
         const data = change.doc.data();
         if (data.target === myId) {
           handleSignalData(data.sender, JSON.parse(data.data));
+          // [FIX] 처리한 시그널 문서는 즉시 삭제 -> signals 컬렉션이 무한정
+          // 쌓이는 것을 방지 (기존에는 방이 삭제될 때만 정리됨)
+          deleteDoc(change.doc.ref).catch(() => {});
         }
       }
     });
@@ -611,6 +614,10 @@ function enterLobby() {
     const data = snap.data();
     if (data.status === "playing" && gameCard.style.display !== "block") {
       startGameUI();
+    } else if (data.status === "waiting" && gameCard.style.display === "block") {
+      // [FIX] 방 상태가 다시 waiting으로 바뀌면(누군가 게임을 종료하면)
+      // 게스트 화면도 자동으로 대기실로 복귀시킴
+      returnToLobbyUI();
     }
   });
 
@@ -620,7 +627,7 @@ function enterLobby() {
     playerList = [];
 
     let allReady = true;
-    
+
     snap.forEach(d => {
       const pData = d.data();
       const pObj = { id: d.id, name: pData.name, isHost: pData.isHost, isReady: pData.isReady, score: 0 };
@@ -640,7 +647,7 @@ function enterLobby() {
       const item = document.createElement("div");
       item.className = "player-item" + (isMe ? " is-me" : "");
       item.id = `player-${d.id}`;
-      
+
       item.innerHTML = `
         <div>
           <strong>${pData.name}</strong>
@@ -688,11 +695,19 @@ function startGameUI() {
   gameCard.style.display = "block";
 
   renderKeyboard();
-  
+
   if (isHost) {
     initNewGameRound();
   }
   updateP2pLog();
+}
+
+// [FIX] 게스트 전용으로 쓰던 강제 퇴장 대신, 방을 나가지 않고
+// 화면만 대기실로 되돌리는 헬퍼. 호스트가 "waiting"으로 바꾸면
+// 모든 참가자가 이 함수를 통해 자동으로 대기실 화면으로 돌아옴.
+function returnToLobbyUI() {
+  gameCard.style.display = "none";
+  lobbyCard.style.display = "block";
 }
 
 function renderKeyboard() {
@@ -773,7 +788,7 @@ function applyGameState(data) {
 
   const isMyTurn = currentTurnPlayer && currentTurnPlayer.id === myId;
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  
+
   for (let char of alphabet) {
     const btn = document.getElementById(`key-${char}`);
     if (!btn) continue;
@@ -883,7 +898,7 @@ async function leaveRoom() {
   if (roomId && myId) {
     try {
       await deleteDoc(doc(db, "game_rooms", roomId, "players", myId));
-      
+
       const pSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
       if (pSnap.empty) {
         await deleteRoom(roomId);
@@ -905,11 +920,19 @@ async function leaveRoom() {
 }
 
 leaveBtn.addEventListener("click", leaveRoom);
+
+// [FIX] 기존에는 게스트가 이 버튼을 누르면 라벨("대기실 복귀")과 달리
+// leaveRoom()이 호출되어 방 자체에서 완전히 나가버렸음.
+// 이제는 호스트/게스트 관계없이 방 상태를 "waiting"으로 되돌려서
+// 모두 함께 대기실로 복귀하도록 통일함 (방을 나가려면 "방 나가기"를 사용).
 exitGameBtn.addEventListener("click", async () => {
-  if (isHost) {
-    await updateDoc(doc(db, "game_rooms", roomId), { status: "waiting" });
-  } else {
-    leaveRoom();
+  try {
+    await updateDoc(doc(db, "game_rooms", roomId), {
+      status: "waiting",
+      lastActive: serverTimestamp()
+    });
+  } catch (e) {
+    console.error("Exit game error:", e);
   }
 });
 
