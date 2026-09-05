@@ -420,8 +420,12 @@ function sortTiles(tiles) {
 }
 
 const Game = {
-  // 선택 상태 (클라이언트 전용, 동기화 안 함)
+  // ===== 클라이언트 전용 상태 =====
   selectedIds: new Set(),
+  workingTable: null,       // 내 턴 동안 로컬로 조작하는 테이블
+  workingHand: null,        // 내 턴 동안 로컬로 조작하는 손패
+  hasPlayedThisTurn: false, // 이번 턴에 타일을 냈거나 조작했는지
+  committedSnapshot: null,  // 턴 시작 시점의 원본 (리셋용)
 
   createInitialState() {
     const deck = shuffle(createDeck());
@@ -436,18 +440,25 @@ const Game = {
 
     return {
       pool: deck,
-      table: [],          // array of melds (each meld = array of tiles)
+      table: [],
       hands,
       hasMelded,
       winnerId: null
     };
   },
 
-  /**
-   * 선택된 타일 ID들로 보드를 조작한다.
-   * - 손패 + 테이블 타일을 모두 사용 가능
-   * - 선택한 타일들로 새 멜드를 만들고, 남은 테이블이 모두 유효해야 함
-   */
+  /** 내 턴이 시작되거나 상태가 갱신될 때 워킹 카피 초기화 */
+  initWorkingState(state, myId) {
+    this.workingTable = state.table.map(meld => meld.map(t => ({ ...t })));
+    this.workingHand = (state.hands[myId] || []).map(t => ({ ...t }));
+    this.hasPlayedThisTurn = false;
+    this.committedSnapshot = {
+      table: state.table.map(meld => meld.map(t => ({ ...t }))),
+      hand: (state.hands[myId] || []).map(t => ({ ...t }))
+    };
+    this.selectedIds.clear();
+  },
+
   applyAction(state, action, senderId, playerList) {
     if (state.winnerId) {
       return { newState: state, message: "이미 게임이 종료되었습니다.", isGameOver: true, advanceTurn: false };
@@ -457,95 +468,115 @@ const Game = {
     const playerName = player?.name || "플레이어";
     let message = "";
     let isGameOver = false;
-    let advanceTurn = false; // 기본적으로 턴을 유지 (여러 번 조작 가능)
+    let advanceTurn = false;
 
-    // ---------- 드로우 ----------
+    // ---------- 드로우 (이번 턴에 아무 행동도 안 했을 때만 허용) ----------
     if (action.type === "draw") {
       if (state.pool.length === 0) {
         return { newState: state, message: "더 이상 뽑을 타일이 없습니다.", isGameOver: false, advanceTurn: false };
       }
+      // 호스트는 클라이언트가 이미 제한했다고 신뢰하되, 테이블이 변경되지 않았는지만 확인
       const tile = state.pool.pop();
       state.hands[senderId].push(tile);
       state.hands[senderId] = sortTiles(state.hands[senderId]);
       message = `${playerName}님이 타일 1장을 뽑았습니다. (남은 풀: ${state.pool.length})`;
-      advanceTurn = true; // 드로우하면 턴 종료
-    }
-
-    // ---------- 턴 종료 ----------
-    else if (action.type === "endTurn") {
-      message = `${playerName}님이 턴을 종료했습니다.`;
       advanceTurn = true;
     }
 
-    // ---------- 세트 내기 / 보드 조작 (여러 세트 동시 + 조커 포함 재구성) ----------
-    else if (action.type === "playOrReform") {
-      const selectedIds = action.tileIds || [];
-      if (selectedIds.length < 3) {
-        return { newState: state, message: "최소 3장 이상 선택해야 합니다.", isGameOver: false, advanceTurn: false };
-      }
+    // ---------- 턴 확정 (자유 조작 후 최종 제출) ----------
+    else if (action.type === "commitTurn") {
+      const proposedTable = action.table || [];
+      const proposedHandIds = action.handIds || [];
 
-      // 1) 선택된 타일들을 손패와 테이블에서 수집
-      const hand = state.hands[senderId] || [];
-      const selectedSet = new Set(selectedIds);
+      // 1) 타일 보존 검사: 플레이어 손패 + 테이블에 있던 타일 ID 집합이 동일해야 함
+      const oldIds = new Set();
+      for (const meld of state.table) for (const t of meld) oldIds.add(t.id);
+      for (const t of (state.hands[senderId] || [])) oldIds.add(t.id);
 
-      const fromHand = [];
-      const remainingHand = [];
-      for (const t of hand) {
-        if (selectedSet.has(t.id)) fromHand.push(t);
-        else remainingHand.push(t);
-      }
-
-      const fromTable = [];
-      const newTable = [];
-      for (const meld of state.table) {
-        const kept = [];
+      const newIds = new Set();
+      const newTableTiles = [];
+      for (const meld of proposedTable) {
         for (const t of meld) {
-          if (selectedSet.has(t.id)) fromTable.push(t);
-          else kept.push(t);
+          newIds.add(t.id);
+          newTableTiles.push(t);
         }
-        if (kept.length > 0) newTable.push(kept);
+      }
+      // 제안된 손패는 ID만 오므로, 기존 타일 객체에서 찾아 복원
+      const allOldTilesMap = {};
+      for (const meld of state.table) for (const t of meld) allOldTilesMap[t.id] = t;
+      for (const t of (state.hands[senderId] || [])) allOldTilesMap[t.id] = t;
+
+      const newHand = [];
+      for (const id of proposedHandIds) {
+        if (!allOldTilesMap[id]) {
+          return { newState: state, message: "존재하지 않는 타일이 손패에 포함되어 있습니다.", isGameOver: false, advanceTurn: false };
+        }
+        newIds.add(id);
+        newHand.push(allOldTilesMap[id]);
       }
 
-      const collected = [...fromHand, ...fromTable];
-      if (collected.length !== selectedIds.length) {
-        return { newState: state, message: "선택한 타일 중 일부를 찾을 수 없습니다.", isGameOver: false, advanceTurn: false };
+      if (oldIds.size !== newIds.size) {
+        return { newState: state, message: "타일 수가 일치하지 않습니다. (생성/소멸 금지)", isGameOver: false, advanceTurn: false };
+      }
+      for (const id of oldIds) {
+        if (!newIds.has(id)) {
+          return { newState: state, message: "타일 구성이 원본과 다릅니다.", isGameOver: false, advanceTurn: false };
+        }
       }
 
-      // 2) 남은 테이블이 모두 유효한지 검사
-      for (const meld of newTable) {
-        if (!isValidMeld(meld)) {
+      // 2) 제안된 테이블의 모든 멜드가 유효한지
+      for (const meld of proposedTable) {
+        // 타일 객체를 ID로부터 복원
+        const resolved = meld.map(t => allOldTilesMap[t.id] || t);
+        if (!isValidMeld(resolved)) {
           return {
             newState: state,
-            message: "조작 후 테이블에 유효하지 않은 세트가 남습니다. (3장 미만이거나 규칙 위반)",
+            message: "최종 테이블에 유효하지 않은 세트가 있습니다. 다시 확인해주세요.",
             isGameOver: false,
             advanceTurn: false
           };
         }
       }
 
-      // 3) 선택한 타일들을 하나 이상의 유효한 멜드로 분할
-      const melds = findMeldPartition(collected);
-      if (!melds || melds.length === 0) {
-        return {
-          newState: state,
-          message: "선택한 타일들을 유효한 세트(들)로 나눌 수 없습니다.\n(그룹 또는 런으로 완전히 나눠져야 합니다)",
-          isGameOver: false,
-          advanceTurn: false
-        };
-      }
-
-      // 4) 초기 멜드 체크
+      // 3) 초기 멜드 검사
       const isInitial = !state.hasMelded[senderId];
       if (isInitial) {
-        if (fromTable.length > 0) {
-          return {
-            newState: state,
-            message: "초기 멜드에서는 테이블 타일을 사용할 수 없습니다. 손패에서만 내세요.",
-            isGameOver: false,
-            advanceTurn: false
-          };
+        // 테이블에 새로 올라간 타일 = 원래 손패에 있던 것들
+        const originalHandIds = new Set((state.hands[senderId] || []).map(t => t.id));
+        let points = 0;
+        let usedTableTile = false;
+        for (const meld of proposedTable) {
+          for (const t of meld) {
+            const id = t.id;
+            if (!originalHandIds.has(id)) usedTableTile = true;
+            else points += tileValue(allOldTilesMap[id]);
+          }
         }
-        const points = collected.reduce((s, t) => s + tileValue(t), 0);
+        // 원래 테이블에 있던 타일이 그대로 있는 경우는 괜찮음 (초기에는 테이블이 비어 있음)
+        if (state.table.length > 0) {
+          // 초기 멜드 전에 테이블에 무언가 있으면 안 되지만, 안전장치
+        }
+        if (usedTableTile && state.table.length === 0) {
+          // 테이블이 원래 비어 있었는데 손패 외 타일이 들어왔다면 오류
+        }
+        // 더 정확한 검사: 원래 테이블 타일 ID
+        const originalTableIds = new Set();
+        for (const meld of state.table) for (const t of meld) originalTableIds.add(t.id);
+
+        for (const meld of proposedTable) {
+          for (const t of meld) {
+            if (originalTableIds.has(t.id)) {
+              // 원래 테이블 타일을 사용한 경우 → 초기 멜드에서는 금지
+              return {
+                newState: state,
+                message: "초기 멜드에서는 테이블에 있던 타일을 사용할 수 없습니다.",
+                isGameOver: false,
+                advanceTurn: false
+              };
+            }
+          }
+        }
+
         if (points < 30) {
           return {
             newState: state,
@@ -556,33 +587,22 @@ const Game = {
         }
       }
 
-      // 5) 적용 (여러 멜드 추가)
-      newTable.push(...melds);
-      state.table = newTable;
-      state.hands[senderId] = sortTiles(remainingHand);
+      // 4) 적용
+      const resolvedTable = proposedTable.map(meld =>
+        meld.map(t => allOldTilesMap[t.id] || t)
+      );
+      state.table = resolvedTable;
+      state.hands[senderId] = sortTiles(newHand);
       state.hasMelded[senderId] = true;
 
-      const usedFromTable = fromTable.length;
-      const points = collected.reduce((s, t) => s + tileValue(t), 0);
-      if (usedFromTable > 0) {
-        message = `${playerName}님이 테이블 타일 ${usedFromTable}장을 포함해 세트 ${melds.length}개를 만들었습니다.`;
-      } else {
-        message = `${playerName}님이 세트 ${melds.length}개를 냈습니다. (${points}점)`;
-      }
+      message = `${playerName}님이 턴을 확정했습니다.`;
+      advanceTurn = true;
 
-      // 조커를 테이블에서 가져왔는지 안내
-      const tookJoker = fromTable.some(t => t.joker);
-      if (tookJoker) {
-        message += " (조커 사용 포함)";
-      }
-
-      // 승리 체크
       if (state.hands[senderId].length === 0) {
         state.winnerId = senderId;
         isGameOver = true;
         message = `🎉 ${playerName}님이 모든 타일을 비웠습니다! 승리!`;
         if (player) player.score = (player.score || 0) + 1;
-        advanceTurn = true;
       }
     }
     else {
@@ -605,60 +625,78 @@ const Game = {
       return;
     }
 
-    const myHand = state.hands[myId] || [];
+    // 내 턴이면 워킹 상태가 없으면 초기화
+    if (isMyTurn) {
+      if (!this.workingTable || !this.workingHand) {
+        this.initWorkingState(state, myId);
+      }
+    } else {
+      // 내 턴이 아니면 워킹 상태 초기화
+      this.workingTable = null;
+      this.workingHand = null;
+      this.hasPlayedThisTurn = false;
+      this.committedSnapshot = null;
+    }
+
+    const displayTable = isMyTurn ? this.workingTable : state.table;
+    const displayHand = isMyTurn ? this.workingHand : (state.hands[myId] || []);
     const hasMelded = state.hasMelded[myId];
 
-    // 테이블 (타일 클릭 가능)
-    let tableHtml = `<div class="section-title">테이블 (놓인 세트) — 타일 클릭으로 선택 가능</div><div class="table-area">`;
-    if (state.table.length === 0) {
+    // 테이블
+    let tableHtml = `<div class="section-title">테이블 ${isMyTurn ? "(자유롭게 재배열 가능 — 턴 종료 시 검사)" : ""}</div><div class="table-area">`;
+    if (!displayTable || displayTable.length === 0) {
       tableHtml += `<span style="color:#94a3b8;font-size:13px;">아직 놓인 세트가 없습니다.</span>`;
     } else {
-      state.table.forEach((meld, idx) => {
-        tableHtml += `<div class="meld" title="세트 ${idx + 1}">`;
+      displayTable.forEach((meld, idx) => {
+        const valid = isValidMeld(meld);
+        tableHtml += `<div class="meld" title="세트 ${idx + 1}" style="${valid ? '' : 'border-color:#ef4444;background:#fef2f2;'}">`;
         meld.forEach(t => {
           const selected = this.selectedIds.has(t.id);
-          tableHtml += this.tileHtml(t, true, selected); // 테이블 타일도 선택 가능
+          tableHtml += this.tileHtml(t, isMyTurn, selected);
         });
         tableHtml += `</div>`;
       });
     }
     tableHtml += `</div>`;
 
-    // 내 손패
+    // 손패
     let handHtml = `
       <div class="info-bar">
-        <span>내 손패 (${myHand.length}장)</span>
+        <span>내 손패 (${displayHand.length}장)${this.hasPlayedThisTurn ? ' · 조작함' : ''}</span>
         <span class="pool-count">남은 풀: ${state.pool.length}장</span>
       </div>
       <div class="section-title">손패 (클릭해서 선택)</div>
       <div class="hand-area">
-        <div class="hand-tiles" id="myHandTiles">
+        <div class="hand-tiles">
     `;
-    myHand.forEach(t => {
+    displayHand.forEach(t => {
       const selected = this.selectedIds.has(t.id);
-      handHtml += this.tileHtml(t, true, selected);
+      handHtml += this.tileHtml(t, isMyTurn, selected);
     });
     handHtml += `</div></div>`;
 
     // 액션 버튼
     let actionHtml = "";
     if (isMyTurn) {
+      const canDraw = !this.hasPlayedThisTurn;
       actionHtml = `
         <div class="action-row">
-          <button class="btn-play" id="btnPlay">선택 타일로 세트 만들기/재구성</button>
+          <button class="btn-play" id="btnPlay">선택 타일로 재구성 (로컬)</button>
           <button class="btn-clear" id="btnClearSel">선택 해제</button>
         </div>
         <div class="action-row" style="margin-top:6px;">
-          <button class="btn-draw" id="btnDraw">타일 뽑기 (턴 종료)</button>
-          <button id="btnEndTurn" style="background:#7c3aed;">턴 종료</button>
+          <button class="btn-draw" id="btnDraw" ${canDraw ? '' : 'disabled'} title="${canDraw ? '' : '이미 타일을 냈기 때문에 뽑을 수 없습니다'}">
+            타일 뽑기${canDraw ? ' (턴 종료)' : ' (불가)'}
+          </button>
+          <button id="btnReset" style="background:#64748b;">원래대로 되돌리기</button>
+          <button id="btnEndTurn" style="background:#7c3aed;">턴 종료 (확정)</button>
         </div>
         <div class="rules-hint">
           ${hasMelded
-            ? "✅ 초기 멜드 완료. 손패 + 테이블 타일(조커 포함)을 선택해 여러 세트를 한 번에 만들 수 있습니다.<br>여러 번 조작 후 「턴 종료」를 누르세요."
-            : "⚠️ 초기 멜드: 손패에서만 선택, 합계 30점 이상 필요"}<br>
+            ? "✅ 초기 멜드 완료. 테이블을 마음대로 깨고 재조립하세요. 중간에 세트가 깨져도 됩니다.<br>「턴 종료」를 누르면 최종 상태가 유효한지 검사합니다."
+            : "⚠️ 초기 멜드: 손패에서만 선택, 합계 30점 이상 필요. 테이블 타일 사용 불가."}<br>
           그룹 = 같은 숫자·다른 색 3~4장 / 런 = 같은 색·연속 숫자 3장 이상<br>
-          <b>팁</b>: 선택한 타일들이 여러 유효 세트로 나눠질 수 있으면 자동으로 분할됩니다.<br>
-          조커를 테이블에서 가져와 새 세트에 바로 사용할 수 있습니다 (남은 보드가 유효해야 함).
+          <b>규칙</b>: 타일을 하나라도 냈거나 조작했으면 이번 턴에 드로우할 수 없습니다.
         </div>
       `;
     } else {
@@ -667,16 +705,28 @@ const Game = {
 
     area.innerHTML = tableHtml + handHtml + actionHtml;
 
-    // 이벤트 바인딩
     if (isMyTurn) {
       document.getElementById("btnDraw")?.addEventListener("click", () => {
+        if (this.hasPlayedThisTurn) {
+          alert("이미 타일을 냈거나 조작했기 때문에 이번 턴에 뽑을 수 없습니다.");
+          return;
+        }
         this.selectedIds.clear();
         window.sendGameAction({ type: "draw" });
       });
 
       document.getElementById("btnEndTurn")?.addEventListener("click", () => {
-        this.selectedIds.clear();
-        window.sendGameAction({ type: "endTurn" });
+        this.commitTurn(state, myId);
+      });
+
+      document.getElementById("btnReset")?.addEventListener("click", () => {
+        if (this.committedSnapshot) {
+          this.workingTable = this.committedSnapshot.table.map(m => m.map(t => ({ ...t })));
+          this.workingHand = this.committedSnapshot.hand.map(t => ({ ...t }));
+          this.hasPlayedThisTurn = false;
+          this.selectedIds.clear();
+          this.render(state, playerList, myId, isMyTurn);
+        }
       });
 
       document.getElementById("btnClearSel")?.addEventListener("click", () => {
@@ -685,10 +735,9 @@ const Game = {
       });
 
       document.getElementById("btnPlay")?.addEventListener("click", () => {
-        this.tryPlayOrReform(state, myId);
+        this.localReform(state, myId);
       });
 
-      // 타일 클릭 (손패 + 테이블)
       area.querySelectorAll(".tile[data-id]").forEach(el => {
         el.addEventListener("click", () => {
           const id = Number(el.dataset.id);
@@ -700,18 +749,85 @@ const Game = {
     }
   },
 
-  tryPlayOrReform(state, myId) {
+  /** 로컬에서만 재구성 (서버 전송 없음, 일시적으로 깨져도 OK) */
+  localReform(state, myId) {
     const selected = [...this.selectedIds];
     if (selected.length < 3) {
       alert("최소 3장 이상 선택해야 합니다.");
       return;
     }
 
-    window.sendGameAction({
-      type: "playOrReform",
-      tileIds: selected
-    });
+    const selectedSet = new Set(selected);
+    const fromHand = [];
+    const remainingHand = [];
+    for (const t of this.workingHand) {
+      if (selectedSet.has(t.id)) fromHand.push(t);
+      else remainingHand.push(t);
+    }
+
+    const fromTable = [];
+    const remainingMelds = [];
+    for (const meld of this.workingTable) {
+      const kept = [];
+      for (const t of meld) {
+        if (selectedSet.has(t.id)) fromTable.push(t);
+        else kept.push(t);
+      }
+      if (kept.length > 0) remainingMelds.push(kept);
+    }
+
+    const collected = [...fromHand, ...fromTable];
+    if (collected.length !== selected.length) {
+      alert("선택한 타일 중 일부를 찾을 수 없습니다.");
+      return;
+    }
+
+    // 로컬에서는 남은 멜드 유효성 검사 안 함 (일시적으로 깨져도 됨)
+    const melds = findMeldPartition(collected);
+    if (!melds || melds.length === 0) {
+      alert("선택한 타일들을 유효한 세트(들)로 나눌 수 없습니다.");
+      return;
+    }
+
+    // 초기 멜드 제한 (로컬에서도 미리 안내)
+    if (!state.hasMelded[myId] && fromTable.length > 0) {
+      alert("초기 멜드에서는 테이블 타일을 사용할 수 없습니다.");
+      return;
+    }
+
+    this.workingTable = [...remainingMelds, ...melds];
+    this.workingHand = sortTiles(remainingHand);
+    this.hasPlayedThisTurn = true;
     this.selectedIds.clear();
+
+    // 전역 playerList 사용 (엔진이 유지하는 값)
+    this.render(state, playerList, myId, true);
+  },
+
+  /** 턴 종료: 최종 상태를 서버에 제출 */
+  commitTurn(state, myId) {
+    // 최종 테이블이 모두 유효한지 클라이언트에서도 미리 검사
+    for (const meld of this.workingTable) {
+      if (!isValidMeld(meld)) {
+        alert("테이블에 유효하지 않은 세트가 있습니다.\n모든 세트를 유효하게 만든 뒤 턴을 종료하세요.\n(빨간색으로 표시된 세트를 확인하세요)");
+        return;
+      }
+    }
+
+    if (!this.hasPlayedThisTurn) {
+      // 아무 조작도 안 하고 턴 종료 → 그냥 턴만 넘김 (드로우 없이)
+      // 규칙상 보통은 드로우해야 하지만, 그냥 패스도 허용하는 변형이 있음.
+      // 여기서는 패스 허용.
+    }
+
+    const tablePayload = this.workingTable.map(meld => meld.map(t => ({ id: t.id })));
+    const handIds = this.workingHand.map(t => t.id);
+
+    window.sendGameAction({
+      type: "commitTurn",
+      table: tablePayload,
+      handIds
+    });
   },
 
   tileHtml(t, clickable = false, selected = false) {
@@ -723,6 +839,10 @@ const Game = {
 
   setupUI() {
     this.selectedIds = new Set();
+    this.workingTable = null;
+    this.workingHand = null;
+    this.hasPlayedThisTurn = false;
+    this.committedSnapshot = null;
     document.getElementById("gameArea").innerHTML =
       `<p style="text-align:center;color:#94a3b8;">게임 준비 중...</p>`;
   }
