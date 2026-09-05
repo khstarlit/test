@@ -2,46 +2,1192 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>루미큐브 Stage2</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>루미큐브 (Rummikub) - P2P 멀티플레이</title>
+
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#eef2f7;margin:0;padding:20px}
-.wrap{max-width:760px;margin:auto}
-.card{background:#fff;border-radius:16px;padding:20px;box-shadow:0 4px 12px rgba(0,0,0,.08)}
-h1{text-align:center;margin:0 0 6px} p{text-align:center;color:#64748b}
-#board{min-height:90px;border:2px dashed #cbd5e1;border-radius:12px;padding:10px;margin:14px 0}
-.group{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
-.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
-.tile{height:58px;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;border:2px solid;cursor:pointer}
-.selected{background:#dbeafe!important;border-color:#2563eb!important;transform:scale(1.05)}
-.info{display:flex;justify-content:space-between;font-weight:700;margin:12px 0}
-button{width:100%;padding:14px;margin-top:10px;border:none;border-radius:10px;background:#2563eb;color:#fff;font-size:16px;font-weight:700}
-.gray{background:#64748b}
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 16px 10px;
+  background: #f1f5f9;
+}
+.card {
+  background: white;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+h2, h3 { text-align: center; margin-top: 0; }
+input {
+  width: 100%;
+  padding: 12px;
+  margin: 6px 0;
+  font-size: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+}
+button {
+  width: 100%;
+  padding: 12px;
+  margin: 6px 0;
+  font-size: 15px;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+button:disabled { background: #94a3b8; cursor: not-allowed; }
+button:active:not(:disabled) { opacity: 0.85; }
+hr { border: none; border-top: 1px solid #e2e8f0; margin: 16px 0; }
+
+#lobby, #game { display: none; }
+
+.room-code {
+  text-align: center;
+  font-size: 28px;
+  font-weight: bold;
+  color: #2563eb;
+  letter-spacing: 2px;
+  margin: 10px 0;
+}
+
+.player-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+.player-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.player-item.is-me { border-color: #2563eb; background: #eff6ff; }
+.player-item.is-turn { border: 2px solid #16a34a; background: #f0fdf4; }
+.tag {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #cbd5e1;
+  color: #334155;
+  margin-left: 5px;
+}
+.tag.host { background: #fef08a; color: #854d0e; }
+.tag.p2p { background: #dcfce7; color: #166534; }
+.badge-ready { font-weight: bold; color: #16a34a; }
+.badge-waiting { color: #94a3b8; }
+
+.leave-btn { background: #64748b; margin-top: 10px; }
+.ready-btn { background: #16a34a; }
+.ready-btn.is-ready { background: #dc2626; }
+
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #0f172a;
+  color: white;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.turn-indicator { font-weight: bold; color: #38bdf8; }
+.status-message {
+  text-align: center;
+  font-weight: bold;
+  font-size: 15px;
+  margin: 8px 0;
+  min-height: 22px;
+}
+.p2p-status {
+  font-size: 12px;
+  color: #64748b;
+  text-align: center;
+  margin-top: 8px;
+}
+
+#gameArea { margin: 10px 0; }
+
+/* ===== 루미큐브 전용 스타일 ===== */
+.tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 48px;
+  margin: 3px;
+  border-radius: 6px;
+  font-weight: bold;
+  font-size: 16px;
+  cursor: pointer;
+  user-select: none;
+  border: 2px solid transparent;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  transition: transform 0.1s, border-color 0.1s;
+}
+.tile:hover { transform: translateY(-2px); }
+.tile.selected {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.4);
+  transform: translateY(-3px);
+}
+.tile.red    { background: #fecaca; color: #b91c1c; }
+.tile.blue   { background: #bfdbfe; color: #1d4ed8; }
+.tile.black  { background: #e2e8f0; color: #1e293b; }
+.tile.orange { background: #fed7aa; color: #c2410c; }
+.tile.joker  { background: linear-gradient(135deg, #fef08a, #fde047); color: #854d0e; font-size: 14px; }
+
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin: 12px 0 6px;
+}
+.table-area, .hand-area {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px;
+  min-height: 70px;
+}
+.meld {
+  display: inline-flex;
+  flex-wrap: wrap;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 4px;
+  margin: 4px;
+}
+.hand-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.action-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.action-row button {
+  flex: 1;
+  margin: 0;
+  padding: 10px 6px;
+  font-size: 14px;
+}
+.btn-draw { background: #0ea5e9; }
+.btn-play { background: #16a34a; }
+.btn-clear { background: #64748b; }
+.info-bar {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+.pool-count { font-weight: 600; color: #0f172a; }
+.win-banner {
+  text-align: center;
+  font-size: 20px;
+  font-weight: bold;
+  color: #16a34a;
+  padding: 16px;
+  background: #f0fdf4;
+  border-radius: 10px;
+  margin: 12px 0;
+}
+.rules-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: center;
+  margin-top: 8px;
+  line-height: 1.4;
+}
 </style>
 </head>
+
 <body>
-<div class="wrap"><div class="card">
-<h1>🎲 루미큐브 Stage 2</h1>
-<p>106장 생성 · 셔플 · 14장 배분 · 선택 후 보드 배치</p>
-<div class="info"><span>남은 타일 <span id="remain">0</span>장</span><span>내 패 <span id="count">14</span>장</span></div>
-<h3>보드</h3><div id="board"></div>
-<h3>내 패</h3><div class="grid" id="hand"></div>
-<button onclick="placeTiles()">선택한 타일 놓기</button>
-<button class="gray" onclick="deal()">새 게임</button>
-</div></div>
-<script>
-const COLORS=[{n:"red",h:"#dc2626"},{n:"blue",h:"#2563eb"},{n:"yellow",h:"#ca8a04"},{n:"black",h:"#111827"}];
-let hand=[],board=[],bag=[],selected=[];
-function makeTiles(){const t=[];let id=0;for(let s=0;s<2;s++)for(const c of COLORS)for(let i=1;i<=13;i++)t.push({id:"t"+id++,color:c.n,hex:c.h,num:i,j:false});t.push({id:"j1",j:true},{id:"j2",j:true});return t}
-function shuffle(a){a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
-function deal(){bag=shuffle(makeTiles());hand=bag.splice(0,14);board=[];selected=[];render()}
-function toggle(id){selected=selected.includes(id)?selected.filter(x=>x!==id):[...selected,id];renderHand()}
-function placeTiles(){if(!selected.length)return;const g=[];hand=hand.filter(t=>selected.includes(t.id)?(g.push(t),false):true);board.push(g);selected=[];render()}
-function tileDiv(t){const d=document.createElement("div");d.className="tile";d.style.borderColor=t.j?"#7c3aed":t.hex;d.style.color=t.j?"#7c3aed":t.hex;d.textContent=t.j?"★":t.num;return d}
-function renderHand(){const el=document.getElementById("hand");el.innerHTML="";hand.forEach(t=>{const d=tileDiv(t);if(selected.includes(t.id))d.classList.add("selected");d.onclick=()=>toggle(t.id);el.appendChild(d)});count.textContent=hand.length}
-function renderBoard(){const el=document.getElementById("board");el.innerHTML="";if(!board.length){el.innerHTML="<div style='color:#94a3b8'>보드가 비어 있습니다</div>";return;}board.forEach(g=>{const r=document.createElement("div");r.className="group";g.forEach(t=>r.appendChild(tileDiv(t)));el.appendChild(r)})}
-function render(){remain.textContent=bag.length;renderHand();renderBoard()}
-deal();
+
+<!-- 1. 메인 로그인 화면 -->
+<div class="card" id="login">
+  <h2>🎲 루미큐브 (Rummikub)</h2>
+  <p style="text-align:center;color:#64748b;font-size:14px;margin:-8px 0 16px;">P2P 멀티플레이 · 2~4인</p>
+  <input id="name" type="text" placeholder="닉네임 입력" maxlength="12">
+  <button id="createRoomBtn">방 만들기 (2~4인)</button>
+  <hr>
+  <input id="joinCode" type="text" inputmode="numeric" maxlength="6" placeholder="방번호 6자리">
+  <button id="joinRoomBtn">방 참가하기</button>
+</div>
+
+<!-- 2. 대기실 화면 -->
+<div class="card" id="lobby">
+  <h3>대기실</h3>
+  <div class="room-code" id="roomNo">------</div>
+
+  <div class="player-list" id="playerList"></div>
+
+  <button id="readyBtn" class="ready-btn">준비 (Ready)</button>
+  <button id="startBtn" style="display: none;">게임 시작</button>
+  <button id="leaveBtn" class="leave-btn">방 나가기</button>
+</div>
+
+<!-- 3. 게임 화면 -->
+<div class="card" id="game">
+  <div class="game-header">
+    <div>라운드: <span id="roundDisplay">1</span></div>
+    <div class="turn-indicator" id="turnDisplay">대기 중...</div>
+  </div>
+
+  <div class="player-list" id="inGamePlayerList" style="margin: 0 0 10px 0; gap: 4px;"></div>
+
+  <div class="status-message" id="statusMessage">게임을 시작합니다.</div>
+
+  <div id="gameArea"></div>
+
+  <div id="p2pLog" class="p2p-status">P2P 연결 상태: 대기 중...</div>
+  <button id="exitGameBtn" class="leave-btn">게임 종료 및 대기실 복귀</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import {
+  getFirestore, doc, setDoc, getDoc, getDocs, deleteDoc,
+  collection, query, onSnapshot, serverTimestamp, updateDoc, addDoc
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCzpHiT-TYIgIZ8quOjMM9dBgf8sIJnVIo",
+  authDomain: "test-1f1f7.firebaseapp.com",
+  projectId: "test-1f1f7",
+  storageBucket: "test-1f1f7.firebasestorage.app",
+  messagingSenderId: "51206027214",
+  appId: "1:51206027214:web:da9406137e4fe6ac7bdd9f"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* ================================================================
+   ★★★ 루미큐브 게임 로직 ★★★
+================================================================ */
+
+const COLORS = ["red", "blue", "black", "orange"];
+const COLOR_LABEL = { red: "빨", blue: "파", black: "검", orange: "주" };
+
+function createDeck() {
+  const deck = [];
+  let id = 0;
+  for (const color of COLORS) {
+    for (let n = 1; n <= 13; n++) {
+      deck.push({ id: id++, color, num: n });
+      deck.push({ id: id++, color, num: n });
+    }
+  }
+  deck.push({ id: id++, joker: true });
+  deck.push({ id: id++, joker: true });
+  return deck;
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function tileValue(t) {
+  if (t.joker) return 30; // 조커는 초기 멜드에서 30으로 계산 (대표값)
+  return t.num;
+}
+
+function isValidGroup(tiles) {
+  if (tiles.length < 3 || tiles.length > 4) return false;
+  const nums = tiles.filter(t => !t.joker).map(t => t.num);
+  if (nums.length === 0) return false; // 전부 조커는 불가
+  const base = nums[0];
+  if (!nums.every(n => n === base)) return false;
+  const colors = tiles.filter(t => !t.joker).map(t => t.color);
+  return new Set(colors).size === colors.length; // 색 중복 없음
+}
+
+function isValidRun(tiles) {
+  if (tiles.length < 3) return false;
+  // 조커를 제외한 타일들로 색과 숫자 확인
+  const nonJokers = tiles.filter(t => !t.joker);
+  if (nonJokers.length === 0) return false;
+  const color = nonJokers[0].color;
+  if (!nonJokers.every(t => t.color === color)) return false;
+
+  // 숫자 정렬 + 조커 위치 채우기
+  const nums = nonJokers.map(t => t.num).sort((a, b) => a - b);
+  const jokerCount = tiles.length - nonJokers.length;
+
+  // 중복 숫자 있으면 런 불가
+  for (let i = 1; i < nums.length; i++) {
+    if (nums[i] === nums[i - 1]) return false;
+  }
+
+  // 최소~최대 범위 안에 조커로 빈 칸을 채울 수 있는지
+  const min = nums[0];
+  const max = nums[nums.length - 1];
+  const needed = max - min + 1 - nums.length;
+  if (needed > jokerCount) return false;
+
+  // 조커가 남은 경우 앞뒤로 확장 가능하므로 OK
+  // 1 아래나 13 위로 못 가는 제약은 간단히 무시 (플레이어 책임)
+  return true;
+}
+
+function isValidMeld(tiles) {
+  return isValidGroup(tiles) || isValidRun(tiles);
+}
+
+function sortTiles(tiles) {
+  return [...tiles].sort((a, b) => {
+    if (a.joker && !b.joker) return 1;
+    if (!a.joker && b.joker) return -1;
+    if (a.joker && b.joker) return 0;
+    if (a.color !== b.color) return COLORS.indexOf(a.color) - COLORS.indexOf(b.color);
+    return a.num - b.num;
+  });
+}
+
+const Game = {
+  // 선택 상태 (클라이언트 전용, 동기화 안 함)
+  selectedIds: new Set(),
+
+  createInitialState() {
+    const deck = shuffle(createDeck());
+    const hands = {};
+    const hasMelded = {};
+    const playerOrder = playerList.map(p => p.id);
+
+    for (const pid of playerOrder) {
+      hands[pid] = sortTiles(deck.splice(0, 14));
+      hasMelded[pid] = false;
+    }
+
+    return {
+      pool: deck,
+      table: [],          // array of melds (each meld = array of tiles)
+      hands,
+      hasMelded,
+      winnerId: null
+    };
+  },
+
+  applyAction(state, action, senderId, playerList) {
+    if (state.winnerId) {
+      return { newState: state, message: "이미 게임이 종료되었습니다.", isGameOver: true, advanceTurn: false };
+    }
+
+    const hand = state.hands[senderId] || [];
+    let message = "";
+    let isGameOver = false;
+    let advanceTurn = true;
+
+    if (action.type === "draw") {
+      if (state.pool.length === 0) {
+        return { newState: state, message: "더 이상 뽑을 타일이 없습니다.", isGameOver: false, advanceTurn: false };
+      }
+      const tile = state.pool.pop();
+      hand.push(tile);
+      state.hands[senderId] = sortTiles(hand);
+      const player = playerList.find(p => p.id === senderId);
+      message = `${player?.name || "플레이어"}님이 타일 1장을 뽑았습니다. (남은 풀: ${state.pool.length})`;
+    }
+    else if (action.type === "playMelds") {
+      const meldTileIds = action.meldIds || []; // array of arrays of tile ids
+      if (!meldTileIds.length) {
+        return { newState: state, message: "낼 세트가 없습니다.", isGameOver: false, advanceTurn: false };
+      }
+
+      // 손에서 타일 찾기
+      const allUsedIds = new Set(meldTileIds.flat());
+      const usedTiles = [];
+      const remainingHand = [];
+      for (const t of hand) {
+        if (allUsedIds.has(t.id)) usedTiles.push(t);
+        else remainingHand.push(t);
+      }
+      if (usedTiles.length !== allUsedIds.size) {
+        return { newState: state, message: "손패에 없는 타일이 포함되어 있습니다.", isGameOver: false, advanceTurn: false };
+      }
+
+      // 각 멜드 유효성 검사
+      const newMelds = [];
+      let totalPoints = 0;
+      for (const ids of meldTileIds) {
+        const tiles = ids.map(id => usedTiles.find(t => t.id === id)).filter(Boolean);
+        if (tiles.length !== ids.length || !isValidMeld(tiles)) {
+          return { newState: state, message: "유효하지 않은 세트가 있습니다. (그룹 또는 런 3장 이상)", isGameOver: false, advanceTurn: false };
+        }
+        newMelds.push(tiles);
+        totalPoints += tiles.reduce((s, t) => s + tileValue(t), 0);
+      }
+
+      // 초기 멜드 체크
+      if (!state.hasMelded[senderId] && totalPoints < 30) {
+        return {
+          newState: state,
+          message: `초기 멜드는 30점 이상이어야 합니다. (현재 ${totalPoints}점)`,
+          isGameOver: false,
+          advanceTurn: false
+        };
+      }
+
+      // 적용
+      state.table.push(...newMelds);
+      state.hands[senderId] = sortTiles(remainingHand);
+      state.hasMelded[senderId] = true;
+
+      const player = playerList.find(p => p.id === senderId);
+      message = `${player?.name || "플레이어"}님이 세트 ${newMelds.length}개를 냈습니다. (${totalPoints}점)`;
+
+      if (state.hands[senderId].length === 0) {
+        state.winnerId = senderId;
+        isGameOver = true;
+        message = `🎉 ${player?.name || "플레이어"}님이 모든 타일을 비웠습니다! 승리!`;
+        // 점수 갱신 (간단히 +1)
+        const p = playerList.find(x => x.id === senderId);
+        if (p) p.score = (p.score || 0) + 1;
+      }
+    }
+    else {
+      return { newState: state, message: "알 수 없는 행동입니다.", isGameOver: false, advanceTurn: false };
+    }
+
+    return { newState: state, message, isGameOver, advanceTurn };
+  },
+
+  render(state, playerList, myId, isMyTurn) {
+    const area = document.getElementById("gameArea");
+    if (!area) return;
+
+    if (state.winnerId) {
+      const winner = playerList.find(p => p.id === state.winnerId);
+      area.innerHTML = `
+        <div class="win-banner">🎉 ${winner?.name || "플레이어"} 승리!</div>
+        <p style="text-align:center;color:#64748b;">4초 후 새 라운드가 시작됩니다...</p>
+      `;
+      return;
+    }
+
+    const myHand = state.hands[myId] || [];
+    const hasMelded = state.hasMelded[myId];
+
+    // 테이블
+    let tableHtml = `<div class="section-title">테이블 (놓인 세트)</div><div class="table-area">`;
+    if (state.table.length === 0) {
+      tableHtml += `<span style="color:#94a3b8;font-size:13px;">아직 놓인 세트가 없습니다.</span>`;
+    } else {
+      state.table.forEach((meld, idx) => {
+        tableHtml += `<div class="meld" title="세트 ${idx + 1}">`;
+        meld.forEach(t => {
+          tableHtml += this.tileHtml(t, false);
+        });
+        tableHtml += `</div>`;
+      });
+    }
+    tableHtml += `</div>`;
+
+    // 내 손패
+    let handHtml = `
+      <div class="info-bar">
+        <span>내 손패 (${myHand.length}장)</span>
+        <span class="pool-count">남은 풀: ${state.pool.length}장</span>
+      </div>
+      <div class="section-title">손패 (클릭해서 선택)</div>
+      <div class="hand-area">
+        <div class="hand-tiles" id="myHandTiles">
+    `;
+    myHand.forEach(t => {
+      const selected = this.selectedIds.has(t.id);
+      handHtml += this.tileHtml(t, true, selected);
+    });
+    handHtml += `</div></div>`;
+
+    // 액션 버튼
+    let actionHtml = "";
+    if (isMyTurn) {
+      actionHtml = `
+        <div class="action-row">
+          <button class="btn-draw" id="btnDraw">타일 뽑기</button>
+          <button class="btn-play" id="btnPlay">선택한 세트 내기</button>
+          <button class="btn-clear" id="btnClearSel">선택 해제</button>
+        </div>
+        <div class="rules-hint">
+          ${hasMelded
+            ? "이미 초기 멜드를 완료했습니다. 유효한 세트를 선택해 내세요."
+            : "⚠️ 초기 멜드: 선택한 타일 합이 30점 이상이어야 합니다."}<br>
+          그룹 = 같은 숫자·다른 색 3~4장 / 런 = 같은 색·연속 숫자 3장 이상
+        </div>
+      `;
+    } else {
+      actionHtml = `<div class="rules-hint">상대 턴입니다. 기다려 주세요.</div>`;
+    }
+
+    area.innerHTML = tableHtml + handHtml + actionHtml;
+
+    // 이벤트 바인딩
+    if (isMyTurn) {
+      document.getElementById("btnDraw")?.addEventListener("click", () => {
+        this.selectedIds.clear();
+        window.sendGameAction({ type: "draw" });
+      });
+
+      document.getElementById("btnClearSel")?.addEventListener("click", () => {
+        this.selectedIds.clear();
+        this.render(state, playerList, myId, isMyTurn);
+      });
+
+      document.getElementById("btnPlay")?.addEventListener("click", () => {
+        this.tryPlaySelected(state, myId);
+      });
+
+      // 타일 클릭
+      area.querySelectorAll(".tile[data-id]").forEach(el => {
+        el.addEventListener("click", () => {
+          const id = Number(el.dataset.id);
+          if (this.selectedIds.has(id)) this.selectedIds.delete(id);
+          else this.selectedIds.add(id);
+          this.render(state, playerList, myId, isMyTurn);
+        });
+      });
+    }
+  },
+
+  tryPlaySelected(state, myId) {
+    const selected = [...this.selectedIds];
+    if (selected.length < 3) {
+      alert("최소 3장 이상 선택해야 합니다.");
+      return;
+    }
+
+    // 선택된 타일들을 하나의 세트로 가정 (여러 세트 동시에 내려면 사용자가 나눠 선택해야 하므로 단순화)
+    // 여러 세트를 한 번에 내기 위해, 선택된 타일을 가능한 세트로 자동 분할하지 않고
+    // 사용자가 한 세트씩 내고 다시 선택하도록 유도. 또는 전체를 한 세트로 검사.
+    const hand = state.hands[myId] || [];
+    const tiles = selected.map(id => hand.find(t => t.id === id)).filter(Boolean);
+    if (tiles.length !== selected.length) {
+      alert("선택된 타일 중 일부가 손패에 없습니다.");
+      return;
+    }
+
+    if (!isValidMeld(tiles)) {
+      alert("선택한 타일이 유효한 그룹 또는 런이 아닙니다.\n(그룹: 같은 숫자 다른 색 / 런: 같은 색 연속 숫자)");
+      return;
+    }
+
+    // 한 세트로 전송
+    window.sendGameAction({
+      type: "playMelds",
+      meldIds: [selected]
+    });
+    this.selectedIds.clear();
+  },
+
+  tileHtml(t, clickable = false, selected = false) {
+    if (t.joker) {
+      return `<div class="tile joker ${selected ? 'selected' : ''}" ${clickable ? `data-id="${t.id}"` : ""}>JK</div>`;
+    }
+    return `<div class="tile ${t.color} ${selected ? 'selected' : ''}" ${clickable ? `data-id="${t.id}"` : ""}>${t.num}</div>`;
+  },
+
+  setupUI() {
+    this.selectedIds = new Set();
+    document.getElementById("gameArea").innerHTML =
+      `<p style="text-align:center;color:#94a3b8;">게임 준비 중...</p>`;
+  }
+};
+
+/* ================================================================
+   ★★★ 플러그인 영역 끝 ★★★
+================================================================ */
+
+let roomId = "";
+let myId = "";
+let myName = "";
+let isHost = false;
+let isReady = false;
+
+let unsubscribeRoom = null;
+let unsubscribePlayers = null;
+let unsubscribeSignals = null;
+
+const rtcConfig = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+const peerConnections = {};
+const dataChannels = {};
+
+// ===== 공통(게임 무관) 상태 =====
+let playerList = [];
+let currentTurnIndex = 0;
+let roundCount = 1;
+let isGameOver = false;
+let gameData = {};
+
+const loginCard = document.getElementById("login");
+const lobbyCard = document.getElementById("lobby");
+const gameCard = document.getElementById("game");
+
+const nameInput = document.getElementById("name");
+const joinCodeInput = document.getElementById("joinCode");
+const roomNoElem = document.getElementById("roomNo");
+const playerListElem = document.getElementById("playerList");
+
+const createRoomBtn = document.getElementById("createRoomBtn");
+const joinRoomBtn = document.getElementById("joinRoomBtn");
+const readyBtn = document.getElementById("readyBtn");
+const startBtn = document.getElementById("startBtn");
+const leaveBtn = document.getElementById("leaveBtn");
+const exitGameBtn = document.getElementById("exitGameBtn");
+
+const turnDisplay = document.getElementById("turnDisplay");
+const roundDisplay = document.getElementById("roundDisplay");
+const statusMessage = document.getElementById("statusMessage");
+const inGamePlayerList = document.getElementById("inGamePlayerList");
+const p2pLog = document.getElementById("p2pLog");
+
+async function cleanupRooms() {
+  try {
+    const snap = await getDocs(collection(db, "game_rooms"));
+    const now = Date.now();
+    const ONE_HOUR = 60 * 60 * 1000;
+    let list = [];
+
+    snap.forEach(d => {
+      const data = d.data();
+      const lastActive = data.lastActive ? data.lastActive.toMillis() : now;
+      list.push({ id: d.id, lastActive });
+    });
+
+    for (const r of list) {
+      if (now - r.lastActive > ONE_HOUR) await deleteRoom(r.id);
+    }
+
+    const updatedSnap = await getDocs(collection(db, "game_rooms"));
+    let remaining = [];
+    updatedSnap.forEach(d => remaining.push({ id: d.id, lastActive: d.data().lastActive?.toMillis() || now }));
+
+    if (remaining.length >= 32) {
+      remaining.sort((a, b) => a.lastActive - b.lastActive);
+      for (let i = 0; i < remaining.length - 31; i++) {
+        await deleteRoom(remaining[i].id);
+      }
+    }
+  } catch (e) { console.error("Cleanup error:", e); }
+}
+
+async function deleteRoom(rId) {
+  const pSnap = await getDocs(collection(db, "game_rooms", rId, "players"));
+  for (const p of pSnap.docs) await deleteDoc(p.ref);
+  const sSnap = await getDocs(collection(db, "game_rooms", rId, "signals"));
+  for (const s of sSnap.docs) await deleteDoc(s.ref);
+  await deleteDoc(doc(db, "game_rooms", rId));
+}
+
+async function sendSignal(targetPeerId, signalData) {
+  try {
+    await addDoc(collection(db, "game_rooms", roomId, "signals"), {
+      sender: myId,
+      target: targetPeerId,
+      data: JSON.stringify(signalData),
+      timestamp: serverTimestamp()
+    });
+  } catch (e) { console.error("Signal send error:", e); }
+}
+
+async function initPeerConnection(targetPeerId, isInitiator) {
+  if (peerConnections[targetPeerId]) return;
+
+  const pc = new RTCPeerConnection(rtcConfig);
+  peerConnections[targetPeerId] = pc;
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      sendSignal(targetPeerId, { type: "candidate", candidate: event.candidate });
+    }
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+      closePeer(targetPeerId);
+    }
+  };
+
+  if (isInitiator) {
+    const dc = pc.createDataChannel("gameChannel");
+    setupDataChannel(targetPeerId, dc);
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    sendSignal(targetPeerId, { type: "offer", offer });
+  } else {
+    pc.ondatachannel = (event) => {
+      setupDataChannel(targetPeerId, event.channel);
+    };
+  }
+}
+
+function setupDataChannel(peerId, channel) {
+  dataChannels[peerId] = channel;
+
+  channel.onopen = () => {
+    updatePlayerP2PStatus(peerId, true);
+    updateP2pLog();
+    if (isHost) {
+      broadcastGameState("새 유저가 P2P 망에 접속했습니다.");
+    }
+  };
+
+  channel.onclose = () => {
+    closePeer(peerId);
+    updateP2pLog();
+  };
+
+  channel.onmessage = (event) => {
+    onP2PMessage(peerId, JSON.parse(event.data));
+  };
+}
+
+async function handleSignalData(senderId, signal) {
+  if (senderId === myId) return;
+
+  if (signal.type === "offer") {
+    await initPeerConnection(senderId, false);
+    const pc = peerConnections[senderId];
+    await pc.setRemoteDescription(new RTCSessionDescription(signal.offer));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    sendSignal(senderId, { type: "answer", answer });
+  } else if (signal.type === "answer") {
+    const pc = peerConnections[senderId];
+    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(signal.answer));
+  } else if (signal.type === "candidate") {
+    const pc = peerConnections[senderId];
+    if (pc) await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+  }
+}
+
+function listenSignals() {
+  const q = collection(db, "game_rooms", roomId, "signals");
+  unsubscribeSignals = onSnapshot(q, (snap) => {
+    snap.docChanges().forEach((change) => {
+      if (change.type === "added") {
+        const data = change.doc.data();
+        if (data.target === myId) {
+          handleSignalData(data.sender, JSON.parse(data.data));
+          deleteDoc(change.doc.ref).catch(() => {});
+        }
+      }
+    });
+  });
+}
+
+function closePeer(peerId) {
+  if (dataChannels[peerId]) {
+    dataChannels[peerId].close();
+    delete dataChannels[peerId];
+  }
+  if (peerConnections[peerId]) {
+    peerConnections[peerId].close();
+    delete peerConnections[peerId];
+  }
+  updatePlayerP2PStatus(peerId, false);
+}
+
+function closeAllPeers() {
+  Object.keys(peerConnections).forEach(closePeer);
+}
+
+window.sendP2P = function(data) {
+  const payload = JSON.stringify(data);
+  Object.values(dataChannels).forEach(dc => {
+    if (dc && dc.readyState === "open") {
+      dc.send(payload);
+    }
+  });
+};
+
+function updateP2pLog() {
+  const activeCount = Object.keys(dataChannels).filter(id => dataChannels[id].readyState === "open").length;
+  p2pLog.textContent = `P2P 직접 연결된 피어: ${activeCount}명`;
+}
+
+createRoomBtn.addEventListener("click", async () => {
+  myName = nameInput.value.trim();
+  if (!myName) return alert("닉네임을 입력하세요.");
+
+  createRoomBtn.disabled = true;
+  await cleanupRooms();
+
+  roomId = Math.floor(100000 + Math.random() * 900000).toString();
+  myId = "p_" + Date.now();
+  isHost = true;
+
+  try {
+    await setDoc(doc(db, "game_rooms", roomId), {
+      status: "waiting",
+      hostId: myId,
+      created: serverTimestamp(),
+      lastActive: serverTimestamp()
+    });
+
+    await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
+      name: myName,
+      isHost: true,
+      isReady: true,
+      joinedAt: serverTimestamp()
+    });
+
+    enterLobby();
+  } catch(e) {
+    console.error("방 생성 오류:", e);
+    alert("방 생성 중 오류가 발생했습니다.");
+  } finally {
+    createRoomBtn.disabled = false;
+  }
+});
+
+joinRoomBtn.addEventListener("click", async () => {
+  myName = nameInput.value.trim();
+  roomId = joinCodeInput.value.trim();
+
+  if (!myName) return alert("닉네임을 입력하세요.");
+  if (!/^\d{6}$/.test(roomId)) return alert("6자리 방번호를 입력하세요.");
+
+  joinRoomBtn.disabled = true;
+
+  try {
+    const roomRef = doc(db, "game_rooms", roomId);
+    const roomSnap = await getDoc(roomRef);
+
+    if (!roomSnap.exists()) {
+      alert("존재하지 않는 방입니다.");
+      return;
+    }
+
+    if (roomSnap.data().status !== "waiting") {
+      alert("이미 게임이 진행 중인 방입니다.");
+      return;
+    }
+
+    const playersSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
+    if (playersSnap.size >= 4) {
+      alert("방이 가득 차서 입장할 수 없습니다. (최대 4인)");
+      return;
+    }
+
+    myId = "p_" + Date.now();
+    isHost = false;
+    isReady = false;
+
+    await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
+      name: myName,
+      isHost: false,
+      isReady: false,
+      joinedAt: serverTimestamp()
+    });
+
+    await updateDoc(roomRef, { lastActive: serverTimestamp() });
+
+    enterLobby();
+  } catch(e) {
+    console.error("방 참가 오류:", e);
+    alert("방 참가 도중 오류가 발생했습니다.");
+  } finally {
+    joinRoomBtn.disabled = false;
+  }
+});
+
+function enterLobby() {
+  loginCard.style.display = "none";
+  gameCard.style.display = "none";
+  lobbyCard.style.display = "block";
+  roomNoElem.textContent = roomId;
+
+  if (isHost) {
+    readyBtn.style.display = "none";
+    startBtn.style.display = "block";
+  } else {
+    readyBtn.style.display = "block";
+    startBtn.style.display = "none";
+  }
+
+  listenSignals();
+
+  unsubscribeRoom = onSnapshot(doc(db, "game_rooms", roomId), (snap) => {
+    if (!snap.exists()) {
+      alert("방이 삭제되었습니다.");
+      leaveRoom();
+      return;
+    }
+    const data = snap.data();
+    if (data.status === "playing" && gameCard.style.display !== "block") {
+      startGameUI();
+    } else if (data.status === "waiting" && gameCard.style.display === "block") {
+      returnToLobbyUI();
+    }
+  });
+
+  const playersQuery = collection(db, "game_rooms", roomId, "players");
+  unsubscribePlayers = onSnapshot(playersQuery, (snap) => {
+    playerListElem.innerHTML = "";
+    playerList = [];
+
+    let allReady = true;
+
+    snap.forEach(d => {
+      const pData = d.data();
+      const pObj = { id: d.id, name: pData.name, isHost: pData.isHost, isReady: pData.isReady, score: 0 };
+      playerList.push(pObj);
+
+      const isMe = d.id === myId;
+      if (!pData.isReady) allReady = false;
+
+      if (!isMe && pData.joinedAt && !peerConnections[d.id]) {
+        if (myId < d.id) {
+          initPeerConnection(d.id, true);
+        }
+      }
+
+      const isConnectedP2P = !!dataChannels[d.id] && dataChannels[d.id].readyState === "open";
+
+      const item = document.createElement("div");
+      item.className = "player-item" + (isMe ? " is-me" : "");
+      item.id = `player-${d.id}`;
+
+      item.innerHTML = `
+        <div>
+          <strong>${pData.name}</strong>
+          ${pData.isHost ? '<span class="tag host">방장</span>' : ''}
+          ${isMe ? '<span class="tag">나</span>' : ''}
+          <span class="tag p2p" id="p2p-badge-${d.id}" style="display: ${isConnectedP2P ? 'inline-block' : 'none'};">P2P연결됨</span>
+        </div>
+        <div class="${pData.isReady ? 'badge-ready' : 'badge-waiting'}">
+          ${pData.isReady ? 'READY' : '대기중'}
+        </div>
+      `;
+      playerListElem.appendChild(item);
+    });
+
+    if (isHost) {
+      startBtn.disabled = !(playerList.length >= 2 && allReady);
+    }
+  });
+}
+
+function updatePlayerP2PStatus(peerId, isConnected) {
+  const badge = document.getElementById(`p2p-badge-${peerId}`);
+  if (badge) {
+    badge.style.display = isConnected ? "inline-block" : "none";
+  }
+}
+
+readyBtn.addEventListener("click", async () => {
+  isReady = !isReady;
+  readyBtn.textContent = isReady ? "준비 취소" : "준비 (Ready)";
+  readyBtn.classList.toggle("is-ready", isReady);
+
+  await updateDoc(doc(db, "game_rooms", roomId, "players", myId), { isReady: isReady });
+});
+
+startBtn.addEventListener("click", async () => {
+  await updateDoc(doc(db, "game_rooms", roomId), {
+    status: "playing",
+    lastActive: serverTimestamp()
+  });
+});
+
+function startGameUI() {
+  lobbyCard.style.display = "none";
+  gameCard.style.display = "block";
+
+  Game.setupUI();
+
+  if (isHost) {
+    startNewRound();
+  }
+  updateP2pLog();
+}
+
+function returnToLobbyUI() {
+  gameCard.style.display = "none";
+  lobbyCard.style.display = "block";
+}
+
+// ===== 공통 라운드/상태 동기화 엔진 =====
+
+function startNewRound() {
+  gameData = Game.createInitialState();
+  currentTurnIndex = 0;
+  isGameOver = false;
+
+  broadcastGameState("라운드가 시작되었습니다! 각자 14장씩 받았습니다.");
+}
+
+function broadcastGameState(msg = "") {
+  if (!isHost) return;
+
+  const statePayload = {
+    type: "STATE_UPDATE",
+    gameData,
+    currentTurnIndex,
+    roundCount,
+    isGameOver,
+    playerList,
+    message: msg
+  };
+
+  applyGameState(statePayload);
+  window.sendP2P(statePayload);
+}
+
+function applyGameState(data) {
+  gameData = data.gameData;
+  currentTurnIndex = data.currentTurnIndex;
+  roundCount = data.roundCount;
+  isGameOver = data.isGameOver;
+  playerList = data.playerList;
+
+  roundDisplay.textContent = roundCount;
+  statusMessage.textContent = data.message;
+
+  const currentTurnPlayer = playerList[currentTurnIndex];
+  const isMyTurn = !!currentTurnPlayer && currentTurnPlayer.id === myId;
+
+  if (currentTurnPlayer) {
+    turnDisplay.textContent = isMyTurn ? "🎯 내 차례!" : `👤 ${currentTurnPlayer.name}의 차례`;
+    turnDisplay.style.color = isMyTurn ? "#16a34a" : "#38bdf8";
+  }
+
+  renderInGamePlayerList();
+
+  Game.render(gameData, playerList, myId, isMyTurn);
+}
+
+function renderInGamePlayerList() {
+  inGamePlayerList.innerHTML = "";
+  playerList.forEach((p, idx) => {
+    const isTurn = idx === currentTurnIndex;
+    const isMe = p.id === myId;
+    const handCount = (gameData.hands && gameData.hands[p.id]) ? gameData.hands[p.id].length : 14;
+    const item = document.createElement("div");
+    item.className = `player-item ${isMe ? 'is-me' : ''} ${isTurn ? 'is-turn' : ''}`;
+    item.style.padding = "6px 10px";
+    item.innerHTML = `
+      <span>${p.name} ${isMe ? '(나)' : ''} · ${handCount}장</span>
+      <strong>${p.score || 0}승</strong>
+    `;
+    inGamePlayerList.appendChild(item);
+  });
+}
+
+function sendGameAction(action) {
+  const currentTurnPlayer = playerList[currentTurnIndex];
+  if (!currentTurnPlayer || currentTurnPlayer.id !== myId || isGameOver) return;
+
+  if (isHost) {
+    processAction(action, myId);
+  } else {
+    window.sendP2P({
+      type: "GAME_ACTION",
+      senderId: myId,
+      action
+    });
+  }
+}
+window.sendGameAction = sendGameAction;
+
+function processAction(action, senderId) {
+  if (!isHost || isGameOver) return;
+
+  const result = Game.applyAction(gameData, action, senderId, playerList) || {};
+  gameData = result.newState !== undefined ? result.newState : gameData;
+  isGameOver = !!result.isGameOver;
+
+  if (!isGameOver && result.advanceTurn !== false) {
+    currentTurnIndex = (currentTurnIndex + 1) % playerList.length;
+  }
+
+  broadcastGameState(result.message || "");
+
+  if (isGameOver) {
+    setTimeout(() => {
+      roundCount++;
+      startNewRound();
+    }, 4000);
+  }
+}
+
+function onP2PMessage(senderId, data) {
+  if (data.type === "GAME_ACTION" && isHost) {
+    if (playerList[currentTurnIndex]?.id === senderId) {
+      processAction(data.action, senderId);
+    }
+  } else if (data.type === "STATE_UPDATE") {
+    applyGameState(data);
+  }
+}
+
+async function leaveRoom() {
+  if (unsubscribeRoom) unsubscribeRoom();
+  if (unsubscribePlayers) unsubscribePlayers();
+  if (unsubscribeSignals) unsubscribeSignals();
+
+  closeAllPeers();
+
+  if (roomId && myId) {
+    try {
+      await deleteDoc(doc(db, "game_rooms", roomId, "players", myId));
+
+      const pSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
+      if (pSnap.empty) {
+        await deleteRoom(roomId);
+      } else if (isHost) {
+        const nextHost = pSnap.docs[0];
+        await updateDoc(doc(db, "game_rooms", roomId), { hostId: nextHost.id });
+        await updateDoc(doc(db, "game_rooms", roomId, "players", nextHost.id), {
+          isHost: true,
+          isReady: true
+        });
+      }
+    } catch (e) { console.error("Exit error:", e); }
+  }
+
+  roomId = ""; myId = ""; isHost = false; isReady = false;
+  loginCard.style.display = "block";
+  lobbyCard.style.display = "none";
+  gameCard.style.display = "none";
+}
+
+leaveBtn.addEventListener("click", leaveRoom);
+
+exitGameBtn.addEventListener("click", async () => {
+  try {
+    await updateDoc(doc(db, "game_rooms", roomId), {
+      status: "waiting",
+      lastActive: serverTimestamp()
+    });
+  } catch (e) {
+    console.error("Exit game error:", e);
+  }
+});
+
+joinCodeInput.addEventListener("input", function() {
+  this.value = this.value.replace(/\D/g, "").slice(0, 6);
+});
 </script>
 </body>
 </html>
