@@ -46,7 +46,7 @@ button:active:not(:disabled) { opacity: 0.8; }
 hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
 
 /* 화면 전환용 */
-#lobby, #game { display: none; }
+#lobby, #game, #finalResults { display: none; }
 
 .room-code {
   text-align: center;
@@ -92,6 +92,43 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
 .ready-btn { background: #16a34a; }
 .ready-btn.is-ready { background: #dc2626; }
 
+/* 대기실 - 게임 설정 */
+.settings-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 16px 0;
+}
+.settings-box h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #475569;
+}
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.setting-row:last-child { margin-bottom: 0; }
+.setting-row label {
+  font-size: 14px;
+  color: #334155;
+  flex: 1;
+}
+.setting-row input {
+  width: 90px;
+  margin: 0;
+  padding: 8px;
+  text-align: center;
+}
+.setting-row input:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
 /* 행맨 게임 화면 스타일 */
 .game-header {
   display: flex;
@@ -101,12 +138,20 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
   color: white;
   padding: 12px 16px;
   border-radius: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 .turn-indicator {
   font-weight: bold;
   color: #38bdf8;
 }
+.timer-row {
+  text-align: center;
+  font-weight: bold;
+  font-size: 15px;
+  color: #0f172a;
+  margin-bottom: 12px;
+}
+.timer-row.urgent { color: #dc2626; }
 .game-main {
   display: flex;
   gap: 16px;
@@ -124,6 +169,7 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
 }
 .hangman-drawing svg {
   max-width: 140px;
+  width: 100%;
   height: auto;
 }
 .game-info {
@@ -173,6 +219,23 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
 .key-btn.correct { background: #dcfce7; color: #166534; border-color: #86efac; }
 .key-btn.wrong { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
 
+/* 단어 전체 제출 */
+.word-guess-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+.word-guess-row input {
+  flex: 1;
+  margin: 0;
+  text-transform: uppercase;
+}
+.word-guess-row button {
+  width: 110px;
+  margin: 0;
+  background: #16a34a;
+}
+
 .status-message {
   text-align: center;
   font-weight: bold;
@@ -185,6 +248,14 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
   color: #64748b;
   text-align: center;
   margin-top: 8px;
+}
+
+/* 최종 순위 화면 */
+.final-message {
+  text-align: center;
+  color: #475569;
+  font-size: 14px;
+  margin-top: 14px;
 }
 </style>
 </head>
@@ -206,6 +277,22 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
   <h3>대기실</h3>
   <div class="room-code" id="roomNo">------</div>
 
+  <div class="settings-box">
+    <h4>⚙️ 게임 설정 (호스트만 변경 가능)</h4>
+    <div class="setting-row">
+      <label for="setRounds">라운드 수</label>
+      <input id="setRounds" type="number" min="1" max="20" value="5">
+    </div>
+    <div class="setting-row">
+      <label for="setMaxWrong">틀리는 기회</label>
+      <input id="setMaxWrong" type="number" min="1" max="15" value="6">
+    </div>
+    <div class="setting-row">
+      <label for="setTimeout">턴 제한시간(초)</label>
+      <input id="setTimeout" type="number" min="5" max="120" value="30">
+    </div>
+  </div>
+
   <div class="player-list" id="playerList"></div>
 
   <button id="readyBtn" class="ready-btn">준비 (Ready)</button>
@@ -216,20 +303,15 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
 <!-- 3. 게임 화면 -->
 <div class="card" id="game">
   <div class="game-header">
-    <div>라운드: <span id="roundDisplay">1</span></div>
+    <div>라운드: <span id="roundDisplay">1</span>/<span id="totalRoundsDisplay">5</span></div>
     <div class="turn-indicator" id="turnDisplay">대기 중...</div>
-    <div>남은 기회: <span id="chancesDisplay">6</span>/6</div>
+    <div>남은 기회: <span id="chancesDisplay">6</span>/<span id="maxWrongDisplay">6</span></div>
   </div>
+  <div class="timer-row" id="turnTimerDisplay">⏱ --</div>
 
   <div class="game-main">
     <div class="hangman-drawing">
-<!--
-      <svg viewBox="0 0 100 120" stroke="#1e293b" stroke-width="3" fill="none" stroke-linecap="round">
--->
-     <svg viewBox="0 0 100 120" width="100" height="120"
-     stroke="#1e293b" stroke-width="3" fill="none" stroke-linecap="round">
-
-        
+      <svg viewBox="0 0 100 120" width="100" height="120" stroke="#1e293b" stroke-width="3" fill="none" stroke-linecap="round">
         <line x1="10" y1="110" x2="90" y2="110" />
         <line x1="30" y1="110" x2="30" y2="10" />
         <line x1="30" y1="10" x2="70" y2="10" />
@@ -254,8 +336,20 @@ hr { border: none; border-top: 1px solid #e2e8f0; margin: 20px 0; }
 
   <div class="keyboard" id="keyboard"></div>
 
+  <div class="word-guess-row">
+    <input id="wordGuessInput" type="text" placeholder="정답 단어 한번에 입력" maxlength="20">
+    <button id="wordGuessBtn">단어 제출</button>
+  </div>
+
   <div id="p2pLog" class="p2p-status">P2P 연결 상태: 대기 중...</div>
   <button id="exitGameBtn" class="leave-btn">게임 종료 및 대기실 복귀</button>
+</div>
+
+<!-- 4. 최종 순위 화면 -->
+<div class="card" id="finalResults">
+  <h2>🏆 최종 순위</h2>
+  <div class="player-list" id="finalRankList"></div>
+  <div class="final-message">잠시 후 대기실로 돌아갑니다...</div>
 </div>
 
 <script type="module">
@@ -300,6 +394,9 @@ const WORD_LIST = [
   "WATER", "CAKE", "EGG", "RICE", "SOUP"
 ];
 
+const POINTS_PER_LETTER = 10;
+const COMPLETE_BONUS = 30;
+
 let roomId = "";
 let myId = "";
 let myName = "";
@@ -319,13 +416,24 @@ let currentTurnIndex = 0;
 let targetWord = "";
 let guessedLetters = [];
 let wrongCount = 0;
-const MAX_WRONG = 6;
 let roundCount = 1;
 let isGameOver = false;
+let allRoundsFinished = false;
+
+// ===== 대기실에서 설정 가능한 값들 (기본값) =====
+let TOTAL_ROUNDS = 5;
+let MAX_WRONG = 6;
+let TURN_TIMEOUT_SEC = 30;
+
+// ===== 턴 타이머 관련 =====
+let turnStartTime = 0;
+let turnTimeoutHandle = null;   // 호스트 전용: 실제 타임아웃 예약
+let countdownIntervalHandle = null; // 전체 클라이언트: 화면 카운트다운 갱신
 
 const loginCard = document.getElementById("login");
 const lobbyCard = document.getElementById("lobby");
 const gameCard = document.getElementById("game");
+const finalResultsCard = document.getElementById("finalResults");
 
 const nameInput = document.getElementById("name");
 const joinCodeInput = document.getElementById("joinCode");
@@ -339,15 +447,27 @@ const startBtn = document.getElementById("startBtn");
 const leaveBtn = document.getElementById("leaveBtn");
 const exitGameBtn = document.getElementById("exitGameBtn");
 
+const setRoundsInput = document.getElementById("setRounds");
+const setMaxWrongInput = document.getElementById("setMaxWrong");
+const setTimeoutInput = document.getElementById("setTimeout");
+
 const wordDisplay = document.getElementById("wordDisplay");
 const wrongLettersList = document.getElementById("wrongLettersList");
 const chancesDisplay = document.getElementById("chancesDisplay");
+const maxWrongDisplay = document.getElementById("maxWrongDisplay");
 const turnDisplay = document.getElementById("turnDisplay");
 const roundDisplay = document.getElementById("roundDisplay");
+const totalRoundsDisplay = document.getElementById("totalRoundsDisplay");
+const turnTimerDisplay = document.getElementById("turnTimerDisplay");
 const statusMessage = document.getElementById("statusMessage");
 const keyboardElem = document.getElementById("keyboard");
 const inGamePlayerList = document.getElementById("inGamePlayerList");
 const p2pLog = document.getElementById("p2pLog");
+
+const wordGuessInput = document.getElementById("wordGuessInput");
+const wordGuessBtn = document.getElementById("wordGuessBtn");
+
+const finalRankList = document.getElementById("finalRankList");
 
 const hangmanParts = [
   document.getElementById("hang-head"),
@@ -357,6 +477,10 @@ const hangmanParts = [
   document.getElementById("hang-legL"),
   document.getElementById("hang-legR")
 ];
+
+function clamp(v, min, max) {
+  return Math.min(Math.max(v, min), max);
+}
 
 async function cleanupRooms() {
   try {
@@ -487,8 +611,6 @@ function listenSignals() {
         const data = change.doc.data();
         if (data.target === myId) {
           handleSignalData(data.sender, JSON.parse(data.data));
-          // [FIX] 처리한 시그널 문서는 즉시 삭제 -> signals 컬렉션이 무한정
-          // 쌓이는 것을 방지 (기존에는 방이 삭제될 때만 정리됨)
           deleteDoc(change.doc.ref).catch(() => {});
         }
       }
@@ -542,7 +664,10 @@ createRoomBtn.addEventListener("click", async () => {
       status: "waiting",
       hostId: myId,
       created: serverTimestamp(),
-      lastActive: serverTimestamp()
+      lastActive: serverTimestamp(),
+      totalRounds: 5,
+      maxWrong: 6,
+      turnTimeoutSec: 30
     });
 
     await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
@@ -615,6 +740,7 @@ joinRoomBtn.addEventListener("click", async () => {
 function enterLobby() {
   loginCard.style.display = "none";
   gameCard.style.display = "none";
+  finalResultsCard.style.display = "none";
   lobbyCard.style.display = "block";
   roomNoElem.textContent = roomId;
 
@@ -626,6 +752,10 @@ function enterLobby() {
     startBtn.style.display = "none";
   }
 
+  setRoundsInput.disabled = !isHost;
+  setMaxWrongInput.disabled = !isHost;
+  setTimeoutInput.disabled = !isHost;
+
   listenSignals();
 
   unsubscribeRoom = onSnapshot(doc(db, "game_rooms", roomId), (snap) => {
@@ -635,11 +765,20 @@ function enterLobby() {
       return;
     }
     const data = snap.data();
-    if (data.status === "playing" && gameCard.style.display !== "block") {
+
+    if (typeof data.totalRounds === "number") TOTAL_ROUNDS = data.totalRounds;
+    if (typeof data.maxWrong === "number") MAX_WRONG = data.maxWrong;
+    if (typeof data.turnTimeoutSec === "number") TURN_TIMEOUT_SEC = data.turnTimeoutSec;
+
+    if (document.activeElement !== setRoundsInput) setRoundsInput.value = TOTAL_ROUNDS;
+    if (document.activeElement !== setMaxWrongInput) setMaxWrongInput.value = MAX_WRONG;
+    if (document.activeElement !== setTimeoutInput) setTimeoutInput.value = TURN_TIMEOUT_SEC;
+
+    const inGameScreen = gameCard.style.display === "block" || finalResultsCard.style.display === "block";
+
+    if (data.status === "playing" && !inGameScreen) {
       startGameUI();
-    } else if (data.status === "waiting" && gameCard.style.display === "block") {
-      // [FIX] 방 상태가 다시 waiting으로 바뀌면(누군가 게임을 종료하면)
-      // 게스트 화면도 자동으로 대기실로 복귀시킴
+    } else if (data.status === "waiting" && inGameScreen) {
       returnToLobbyUI();
     }
   });
@@ -713,24 +852,57 @@ startBtn.addEventListener("click", async () => {
   });
 });
 
+// ===== 대기실 설정 변경 (호스트 전용) =====
+async function updateRoomSettings() {
+  if (!isHost || !roomId) return;
+
+  const rounds = clamp(parseInt(setRoundsInput.value) || 5, 1, 20);
+  const maxW = clamp(parseInt(setMaxWrongInput.value) || 6, 1, 15);
+  const timeoutSec = clamp(parseInt(setTimeoutInput.value) || 30, 5, 120);
+
+  setRoundsInput.value = rounds;
+  setMaxWrongInput.value = maxW;
+  setTimeoutInput.value = timeoutSec;
+
+  try {
+    await updateDoc(doc(db, "game_rooms", roomId), {
+      totalRounds: rounds,
+      maxWrong: maxW,
+      turnTimeoutSec: timeoutSec,
+      lastActive: serverTimestamp()
+    });
+  } catch (e) { console.error("설정 변경 오류:", e); }
+}
+
+setRoundsInput.addEventListener("change", updateRoomSettings);
+setMaxWrongInput.addEventListener("change", updateRoomSettings);
+setTimeoutInput.addEventListener("change", updateRoomSettings);
+
 function startGameUI() {
   lobbyCard.style.display = "none";
+  finalResultsCard.style.display = "none";
   gameCard.style.display = "block";
 
   renderKeyboard();
+  startCountdownRenderer();
 
   if (isHost) {
+    roundCount = 1;
     initNewGameRound();
   }
   updateP2pLog();
 }
 
-// [FIX] 게스트 전용으로 쓰던 강제 퇴장 대신, 방을 나가지 않고
-// 화면만 대기실로 되돌리는 헬퍼. 호스트가 "waiting"으로 바꾸면
-// 모든 참가자가 이 함수를 통해 자동으로 대기실 화면으로 돌아옴.
 function returnToLobbyUI() {
   gameCard.style.display = "none";
+  finalResultsCard.style.display = "none";
   lobbyCard.style.display = "block";
+  stopCountdownRenderer();
+
+  if (isHost && turnTimeoutHandle) {
+    clearTimeout(turnTimeoutHandle);
+    turnTimeoutHandle = null;
+  }
 }
 
 function renderKeyboard() {
@@ -746,14 +918,77 @@ function renderKeyboard() {
   }
 }
 
+/* ==========================================
+   턴 타임아웃 (호스트가 실제 타이머를 관리)
+========================================== */
+function scheduleTurnTimeout() {
+  if (!isHost) return;
+  if (turnTimeoutHandle) {
+    clearTimeout(turnTimeoutHandle);
+    turnTimeoutHandle = null;
+  }
+  if (isGameOver) return;
+
+  turnTimeoutHandle = setTimeout(() => {
+    handleTurnTimeout();
+  }, TURN_TIMEOUT_SEC * 1000);
+}
+
+function handleTurnTimeout() {
+  if (!isHost || isGameOver) return;
+
+  const currentTurnPlayer = playerList[currentTurnIndex];
+  const name = currentTurnPlayer ? currentTurnPlayer.name : "플레이어";
+
+  currentTurnIndex = (currentTurnIndex + 1) % playerList.length;
+  turnStartTime = Date.now();
+
+  broadcastGameState(`⏰ ${name}님이 시간 초과! 다음 차례로 넘어갑니다.`);
+  scheduleTurnTimeout();
+}
+
+/* ==========================================
+   클라이언트 공통 - 카운트다운 화면 표시
+========================================== */
+function startCountdownRenderer() {
+  stopCountdownRenderer();
+  countdownIntervalHandle = setInterval(updateTurnTimerDisplay, 500);
+  updateTurnTimerDisplay();
+}
+
+function stopCountdownRenderer() {
+  if (countdownIntervalHandle) {
+    clearInterval(countdownIntervalHandle);
+    countdownIntervalHandle = null;
+  }
+}
+
+function updateTurnTimerDisplay() {
+  if (isGameOver || !turnStartTime) {
+    turnTimerDisplay.textContent = "⏱ --";
+    turnTimerDisplay.classList.remove("urgent");
+    return;
+  }
+  const elapsed = (Date.now() - turnStartTime) / 1000;
+  const remaining = Math.max(0, Math.ceil(TURN_TIMEOUT_SEC - elapsed));
+  turnTimerDisplay.textContent = `⏱ ${remaining}초`;
+  turnTimerDisplay.classList.toggle("urgent", remaining <= 5);
+}
+
+/* ==========================================
+   라운드/상태 브로드캐스트
+========================================== */
 function initNewGameRound() {
   targetWord = WORD_LIST[Math.floor(Math.random() * WORD_LIST.length)];
   guessedLetters = [];
   wrongCount = 0;
   currentTurnIndex = 0;
   isGameOver = false;
+  allRoundsFinished = false;
+  turnStartTime = Date.now();
 
   broadcastGameState("라운드가 시작되었습니다! 추측을 시작하세요.");
+  scheduleTurnTimeout();
 }
 
 function broadcastGameState(msg = "") {
@@ -762,19 +997,20 @@ function broadcastGameState(msg = "") {
   const statePayload = {
     type: "STATE_UPDATE",
     targetWord: isGameOver ? targetWord : "",
-    wordMasked: getMaskedWord(),
+    wordMasked: isGameOver ? targetWord.split("").join(" ") : getMaskedWord(),
     guessedLetters,
-    // [FIX] 참가자는 targetWord를 모르기 때문에(빈 문자열),
-    // "틀린 글자"를 정답 단어를 아는 호스트 쪽에서 미리 계산해서 같이 보냄.
-    // 기존에는 각 클라이언트가 로컬 targetWord로 다시 계산했는데,
-    // 참가자의 targetWord는 항상 ""라서 모든 글자가 틀림으로 표시되던 버그가 있었음.
     wrongLetters: guessedLetters.filter(l => !targetWord.includes(l)),
     wrongCount,
     currentTurnIndex,
     roundCount,
     isGameOver,
+    allRoundsFinished,
     playerList,
-    message: msg
+    message: msg,
+    turnStartTime,
+    totalRounds: TOTAL_ROUNDS,
+    maxWrong: MAX_WRONG,
+    turnTimeoutSec: TURN_TIMEOUT_SEC
   };
 
   applyGameState(statePayload);
@@ -791,40 +1027,54 @@ function applyGameState(data) {
   currentTurnIndex = data.currentTurnIndex;
   roundCount = data.roundCount;
   isGameOver = data.isGameOver;
+  allRoundsFinished = !!data.allRoundsFinished;
   playerList = data.playerList;
+  turnStartTime = data.turnStartTime || 0;
+
+  if (typeof data.totalRounds === "number") TOTAL_ROUNDS = data.totalRounds;
+  if (typeof data.maxWrong === "number") MAX_WRONG = data.maxWrong;
+  if (typeof data.turnTimeoutSec === "number") TURN_TIMEOUT_SEC = data.turnTimeoutSec;
+
+  if (allRoundsFinished) {
+    showFinalResultsScreen();
+    statusMessage.textContent = data.message;
+    return;
+  }
 
   roundDisplay.textContent = roundCount;
+  totalRoundsDisplay.textContent = TOTAL_ROUNDS;
   chancesDisplay.textContent = MAX_WRONG - wrongCount;
+  maxWrongDisplay.textContent = MAX_WRONG;
   wordDisplay.textContent = data.wordMasked || getMaskedWord();
   statusMessage.textContent = data.message;
+  updateTurnTimerDisplay();
 
-  // [FIX] 로컬 targetWord 대신, 호스트가 계산해서 보내준 wrongLetters를 그대로 사용
   const wrongLetters = data.wrongLetters || [];
   wrongLettersList.textContent = wrongLetters.length > 0 ? wrongLetters.join(", ") : "-";
 
+  // 남은 기회(MAX_WRONG)에 맞춰 6단계 그림을 비례 배분해서 표시
   hangmanParts.forEach((part, idx) => {
-    part.style.display = idx < wrongCount ? "inline" : "none";
+    const stageThreshold = Math.ceil((idx + 1) * MAX_WRONG / hangmanParts.length);
+    part.style.display = wrongCount >= stageThreshold ? "inline" : "none";
   });
 
   const currentTurnPlayer = playerList[currentTurnIndex];
+  const isMyTurn = !!currentTurnPlayer && currentTurnPlayer.id === myId;
+
   if (currentTurnPlayer) {
-    const isMyTurn = currentTurnPlayer.id === myId;
     turnDisplay.textContent = isMyTurn ? "🎯 내 차례!" : `👤 ${currentTurnPlayer.name}의 차례`;
     turnDisplay.style.color = isMyTurn ? "#16a34a" : "#38bdf8";
   }
 
   renderInGamePlayerList();
 
-  const isMyTurn = currentTurnPlayer && currentTurnPlayer.id === myId;
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
   for (let char of alphabet) {
     const btn = document.getElementById(`key-${char}`);
     if (!btn) continue;
 
     if (guessedLetters.includes(char)) {
       btn.disabled = true;
-      // [FIX] 마찬가지로 targetWord 대신 wrongLetters 기준으로 정답/오답 색상 결정
       const isCorrect = !wrongLetters.includes(char);
       btn.className = `key-btn ${isCorrect ? 'correct' : 'wrong'}`;
     } else {
@@ -832,6 +1082,9 @@ function applyGameState(data) {
       btn.className = "key-btn";
     }
   }
+
+  wordGuessInput.disabled = !isMyTurn || isGameOver;
+  wordGuessBtn.disabled = !isMyTurn || isGameOver;
 }
 
 function renderInGamePlayerList() {
@@ -850,6 +1103,9 @@ function renderInGamePlayerList() {
   });
 }
 
+/* ==========================================
+   글자 하나 맞추기
+========================================== */
 function handleLetterInput(letter) {
   const currentTurnPlayer = playerList[currentTurnIndex];
   if (!currentTurnPlayer || currentTurnPlayer.id !== myId || isGameOver) return;
@@ -875,14 +1131,17 @@ function processLetterGuess(letter, senderId) {
   let msg = "";
 
   if (targetWord.includes(letter)) {
-    senderPlayer.score = (senderPlayer.score || 0) + 10;
-    msg = `${senderName}님이 '${letter}' 맞춤! (+10점)`;
+    // [신규] 글자가 단어에 등장하는 횟수만큼 점수 지급
+    const occurrences = targetWord.split("").filter(c => c === letter).length;
+    const pointsGained = occurrences * POINTS_PER_LETTER;
+    senderPlayer.score = (senderPlayer.score || 0) + pointsGained;
+    msg = `${senderName}님이 '${letter}' 맞춤! (+${pointsGained}점)`;
 
     const isCompleted = targetWord.split("").every(c => guessedLetters.includes(c));
     if (isCompleted) {
       isGameOver = true;
-      senderPlayer.score += 30;
-      msg = `🎉 ${senderName}님이 단어 [${targetWord}]를 완성했습니다! (+30점 보너스)`;
+      senderPlayer.score += COMPLETE_BONUS;
+      msg = `🎉 ${senderName}님이 단어 [${targetWord}]를 완성했습니다! (+${COMPLETE_BONUS}점 보너스)`;
     }
   } else {
     wrongCount++;
@@ -896,22 +1155,152 @@ function processLetterGuess(letter, senderId) {
 
   if (!isGameOver) {
     currentTurnIndex = (currentTurnIndex + 1) % playerList.length;
+    turnStartTime = Date.now();
   }
 
   broadcastGameState(msg);
 
   if (isGameOver) {
-    setTimeout(() => {
+    handleRoundEnd();
+  } else {
+    scheduleTurnTimeout();
+  }
+}
+
+/* ==========================================
+   단어 전체 한번에 제출하기 [신규]
+========================================== */
+function handleWordGuessSubmit() {
+  const word = wordGuessInput.value.trim().toUpperCase();
+  wordGuessInput.value = "";
+  if (!word) return;
+
+  const currentTurnPlayer = playerList[currentTurnIndex];
+  if (!currentTurnPlayer || currentTurnPlayer.id !== myId || isGameOver) return;
+
+  if (isHost) {
+    processWordGuess(word, myId);
+  } else {
+    window.sendP2P({
+      type: "GUESS_WORD",
+      senderId: myId,
+      word: word
+    });
+  }
+}
+
+wordGuessBtn.addEventListener("click", handleWordGuessSubmit);
+wordGuessInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.isComposing) {
+    e.preventDefault();
+    handleWordGuessSubmit();
+  }
+});
+
+function processWordGuess(word, senderId) {
+  if (!isHost || isGameOver) return;
+
+  const senderPlayer = playerList.find(p => p.id === senderId);
+  const senderName = senderPlayer ? senderPlayer.name : "플레이어";
+
+  let msg = "";
+
+  if (word === targetWord) {
+    // [신규] 아직 시도하지 않은(맞았든 틀렸든 guessedLetters에 없는) 알파벳 수만큼 보너스
+    const remainingLetters = 26 - guessedLetters.length;
+    const bonus = remainingLetters * POINTS_PER_LETTER;
+    senderPlayer.score = (senderPlayer.score || 0) + bonus;
+    isGameOver = true;
+
+    // 화면에 전체 단어를 보여주기 위해, 아직 안 맞춘 글자도 guessedLetters에 채워넣음
+    targetWord.split("").forEach(c => {
+      if (!guessedLetters.includes(c)) guessedLetters.push(c);
+    });
+
+    msg = `🎉 ${senderName}님이 단어 [${targetWord}]를 한 번에 맞췄습니다! (+${bonus}점 보너스)`;
+  } else {
+    wrongCount++;
+    msg = `${senderName}님이 [${word}]로 전체 제출했지만 오답! (남은 기회 ${MAX_WRONG - wrongCount})`;
+
+    if (wrongCount >= MAX_WRONG) {
+      isGameOver = true;
+      msg = `💀 기회를 모두 소진했습니다! 정답: [${targetWord}]`;
+    }
+  }
+
+  if (!isGameOver) {
+    currentTurnIndex = (currentTurnIndex + 1) % playerList.length;
+    turnStartTime = Date.now();
+  }
+
+  broadcastGameState(msg);
+
+  if (isGameOver) {
+    handleRoundEnd();
+  } else {
+    scheduleTurnTimeout();
+  }
+}
+
+/* ==========================================
+   라운드 종료 처리 -> 다음 라운드 or 최종 결과
+========================================== */
+function handleRoundEnd() {
+  if (!isHost) return;
+
+  setTimeout(() => {
+    if (roundCount >= TOTAL_ROUNDS) {
+      finishAllRounds();
+    } else {
       roundCount++;
       initNewGameRound();
-    }, 4000);
-  }
+    }
+  }, 4000);
+}
+
+function finishAllRounds() {
+  allRoundsFinished = true;
+  broadcastGameState("🏁 모든 라운드가 종료되었습니다! 최종 순위를 확인하세요.");
+
+  setTimeout(async () => {
+    try {
+      await updateDoc(doc(db, "game_rooms", roomId), {
+        status: "waiting",
+        lastActive: serverTimestamp()
+      });
+    } catch (e) { console.error("대기실 복귀 오류:", e); }
+  }, 8000);
+}
+
+function showFinalResultsScreen() {
+  gameCard.style.display = "none";
+  finalResultsCard.style.display = "block";
+  stopCountdownRenderer();
+
+  const sorted = [...playerList].sort((a, b) => (b.score || 0) - (a.score || 0));
+  finalRankList.innerHTML = "";
+
+  sorted.forEach((p, idx) => {
+    const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `${idx + 1}위`;
+    const isMe = p.id === myId;
+    const item = document.createElement("div");
+    item.className = "player-item" + (isMe ? " is-me" : "");
+    item.innerHTML = `
+      <span>${medal} ${p.name}${isMe ? ' (나)' : ''}</span>
+      <strong>${p.score || 0}점</strong>
+    `;
+    finalRankList.appendChild(item);
+  });
 }
 
 function onP2PMessage(senderId, data) {
   if (data.type === "GUESS_LETTER" && isHost) {
     if (playerList[currentTurnIndex]?.id === senderId) {
       processLetterGuess(data.letter, senderId);
+    }
+  } else if (data.type === "GUESS_WORD" && isHost) {
+    if (playerList[currentTurnIndex]?.id === senderId) {
+      processWordGuess(data.word, senderId);
     }
   } else if (data.type === "STATE_UPDATE") {
     applyGameState(data);
@@ -924,6 +1313,12 @@ async function leaveRoom() {
   if (unsubscribeSignals) unsubscribeSignals();
 
   closeAllPeers();
+  stopCountdownRenderer();
+
+  if (turnTimeoutHandle) {
+    clearTimeout(turnTimeoutHandle);
+    turnTimeoutHandle = null;
+  }
 
   if (roomId && myId) {
     try {
@@ -947,14 +1342,11 @@ async function leaveRoom() {
   loginCard.style.display = "block";
   lobbyCard.style.display = "none";
   gameCard.style.display = "none";
+  finalResultsCard.style.display = "none";
 }
 
 leaveBtn.addEventListener("click", leaveRoom);
 
-// [FIX] 기존에는 게스트가 이 버튼을 누르면 라벨("대기실 복귀")과 달리
-// leaveRoom()이 호출되어 방 자체에서 완전히 나가버렸음.
-// 이제는 호스트/게스트 관계없이 방 상태를 "waiting"으로 되돌려서
-// 모두 함께 대기실로 복귀하도록 통일함 (방을 나가려면 "방 나가기"를 사용).
 exitGameBtn.addEventListener("click", async () => {
   try {
     await updateDoc(doc(db, "game_rooms", roomId), {
