@@ -674,7 +674,8 @@ createRoomBtn.addEventListener("click", async () => {
       name: myName,
       isHost: true,
       isReady: true,
-      joinedAt: serverTimestamp()
+      joinedAt: serverTimestamp(),
+      wins: 0
     });
 
     enterLobby();
@@ -723,7 +724,8 @@ joinRoomBtn.addEventListener("click", async () => {
       name: myName,
       isHost: false,
       isReady: false,
-      joinedAt: serverTimestamp()
+      joinedAt: serverTimestamp(),
+      wins: 0
     });
 
     await updateDoc(roomRef, { lastActive: serverTimestamp() });
@@ -792,7 +794,9 @@ function enterLobby() {
 
     snap.forEach(d => {
       const pData = d.data();
-      const pObj = { id: d.id, name: pData.name, isHost: pData.isHost, isReady: pData.isReady, score: 0 };
+      // [신규] 이 방에서의 누적 승수(wins)를 Firestore에서 그대로 가져옴.
+      // score는 매 게임 시작 시 초기화되는 값이라 항상 0으로 시작.
+      const pObj = { id: d.id, name: pData.name, isHost: pData.isHost, isReady: pData.isReady, score: 0, wins: pData.wins || 0 };
       playerList.push(pObj);
 
       const isMe = d.id === myId;
@@ -815,6 +819,7 @@ function enterLobby() {
           <strong>${pData.name}</strong>
           ${pData.isHost ? '<span class="tag host">방장</span>' : ''}
           ${isMe ? '<span class="tag">나</span>' : ''}
+          <span class="tag" style="background:#e0e7ff;color:#3730a3;">🏆 ${pData.wins || 0}승</span>
           <span class="tag p2p" id="p2p-badge-${d.id}" style="display: ${isConnectedP2P ? 'inline-block' : 'none'};">P2P연결됨</span>
         </div>
         <div class="${pData.isReady ? 'badge-ready' : 'badge-waiting'}">
@@ -887,6 +892,8 @@ function startGameUI() {
   startCountdownRenderer();
 
   if (isHost) {
+    // [신규] 새 게임을 시작할 때마다 점수는 0으로 초기화 (누적 승수(wins)는 유지)
+    playerList.forEach(p => { p.score = 0; });
     roundCount = 1;
     initNewGameRound();
   }
@@ -1260,6 +1267,18 @@ function handleRoundEnd() {
 
 function finishAllRounds() {
   allRoundsFinished = true;
+
+  // [신규] 이번 게임 최고 점수 플레이어(동점이면 전원)에게 이 방에서의 누적 승수(wins)를 +1
+  const maxScore = Math.max(...playerList.map(p => p.score || 0));
+  const winners = playerList.filter(p => (p.score || 0) === maxScore);
+
+  winners.forEach(w => {
+    w.wins = (w.wins || 0) + 1; // 브로드캐스트에 바로 반영되도록 로컬에서도 즉시 갱신
+    updateDoc(doc(db, "game_rooms", roomId, "players", w.id), {
+      wins: w.wins
+    }).catch(e => console.error("승수 기록 오류:", e));
+  });
+
   broadcastGameState("🏁 모든 라운드가 종료되었습니다! 최종 순위를 확인하세요.");
 
   setTimeout(async () => {
@@ -1287,7 +1306,10 @@ function showFinalResultsScreen() {
     item.className = "player-item" + (isMe ? " is-me" : "");
     item.innerHTML = `
       <span>${medal} ${p.name}${isMe ? ' (나)' : ''}</span>
-      <strong>${p.score || 0}점</strong>
+      <span style="display:flex; flex-direction:column; align-items:flex-end;">
+        <strong>${p.score || 0}점</strong>
+        <span style="font-size:12px; color:#64748b;">이 방 누적 ${p.wins || 0}승</span>
+      </span>
     `;
     finalRankList.appendChild(item);
   });
