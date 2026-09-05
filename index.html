@@ -35,56 +35,53 @@ h1 {
   margin: 10px 0 30px;
 }
 
-/* 버튼 4개 영역 */
-
+/* 3x3 그리드 설정 및 간격 축소 */
 .menu {
   display: grid;
-
-  grid-template-columns:
-    repeat(2, 1fr);
-
-  gap: 16px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
 }
 
-/* 사각형 버튼 */
-
+/* 크기 감소를 위해 폰트 크기 및 모서리 곡률 조정 */
 .menu-button {
-
   aspect-ratio: 1 / 1;
 
   display: flex;
-
   align-items: center;
   justify-content: center;
 
   text-decoration: none;
 
   background: white;
-
-  border-radius: 16px;
-
+  border-radius: 12px;
   border: 1px solid #ddd;
 
-  box-shadow:
-    0 3px 8px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
 
-  font-size: 22px;
-
+  font-size: 16px;
   font-weight: 600;
 
   color: #222;
 
-  transition:
-    transform 0.1s,
-    box-shadow 0.1s;
+  transition: transform 0.1s, box-shadow 0.1s;
 }
 
 .menu-button:active {
-
   transform: scale(0.97);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
 
-  box-shadow:
-    0 1px 4px rgba(0,0,0,0.08);
+/* 비활성화(Coming Soon) 스타일 */
+.menu-button.disabled {
+  background: #ebebeb;
+  color: #a0a0a0;
+  border-color: #e0e0e0;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.menu-button.disabled:active {
+  transform: none;
 }
 
 </style>
@@ -99,36 +96,40 @@ h1 {
 
   <div class="menu">
 
-    <a
-      class="menu-button"
-      href="chat1.html"
-    >
+    <a class="menu-button" href="chat1.html">
       Chat
     </a>
 
-
-    <a
-      class="menu-button"
-      href="hangman1.html"
-    >
+    <a class="menu-button" href="hangman1.html">
       Hangman
     </a>
 
-
-    <a
-      class="menu-button"
-      href="hangman2.html"
-    >
+    <a class="menu-button" href="hangman2.html">
       Hangman2
     </a>
 
+    <a class="menu-button disabled" href="#" onclick="return false;">
+      Coming Soon
+    </a>
 
-    <a
-      class="menu-button"
-      href="#"
-      onclick="return false;"
-    >
-      준비중
+    <a class="menu-button disabled" href="#" onclick="return false;">
+      Coming Soon
+    </a>
+
+    <a class="menu-button disabled" href="#" onclick="return false;">
+      Coming Soon
+    </a>
+
+    <a class="menu-button disabled" href="#" onclick="return false;">
+      Coming Soon
+    </a>
+
+    <a class="menu-button disabled" href="#" onclick="return false;">
+      Coming Soon
+    </a>
+
+    <a class="menu-button disabled" href="#" onclick="return false;">
+      Coming Soon
     </a>
 
   </div>
