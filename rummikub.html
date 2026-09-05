@@ -890,7 +890,7 @@ const p2pLog = document.getElementById("p2pLog");
 
 async function cleanupRooms() {
   try {
-    const snap = await getDocs(collection(db, "game_rooms"));
+    const snap = await getDocs(collection(db, "rummikub_rooms"));
     const now = Date.now();
     const ONE_HOUR = 60 * 60 * 1000;
     let list = [];
@@ -905,7 +905,7 @@ async function cleanupRooms() {
       if (now - r.lastActive > ONE_HOUR) await deleteRoom(r.id);
     }
 
-    const updatedSnap = await getDocs(collection(db, "game_rooms"));
+    const updatedSnap = await getDocs(collection(db, "rummikub_rooms"));
     let remaining = [];
     updatedSnap.forEach(d => remaining.push({ id: d.id, lastActive: d.data().lastActive?.toMillis() || now }));
 
@@ -919,16 +919,16 @@ async function cleanupRooms() {
 }
 
 async function deleteRoom(rId) {
-  const pSnap = await getDocs(collection(db, "game_rooms", rId, "players"));
+  const pSnap = await getDocs(collection(db, "rummikub_rooms", rId, "players"));
   for (const p of pSnap.docs) await deleteDoc(p.ref);
-  const sSnap = await getDocs(collection(db, "game_rooms", rId, "signals"));
+  const sSnap = await getDocs(collection(db, "rummikub_rooms", rId, "signals"));
   for (const s of sSnap.docs) await deleteDoc(s.ref);
-  await deleteDoc(doc(db, "game_rooms", rId));
+  await deleteDoc(doc(db, "rummikub_rooms", rId));
 }
 
 async function sendSignal(targetPeerId, signalData) {
   try {
-    await addDoc(collection(db, "game_rooms", roomId, "signals"), {
+    await addDoc(collection(db, "rummikub_rooms", roomId, "signals"), {
       sender: myId,
       target: targetPeerId,
       data: JSON.stringify(signalData),
@@ -1010,7 +1010,7 @@ async function handleSignalData(senderId, signal) {
 }
 
 function listenSignals() {
-  const q = collection(db, "game_rooms", roomId, "signals");
+  const q = collection(db, "rummikub_rooms", roomId, "signals");
   unsubscribeSignals = onSnapshot(q, (snap) => {
     snap.docChanges().forEach((change) => {
       if (change.type === "added") {
@@ -1066,14 +1066,14 @@ createRoomBtn.addEventListener("click", async () => {
   isHost = true;
 
   try {
-    await setDoc(doc(db, "game_rooms", roomId), {
+    await setDoc(doc(db, "rummikub_rooms", roomId), {
       status: "waiting",
       hostId: myId,
       created: serverTimestamp(),
       lastActive: serverTimestamp()
     });
 
-    await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
+    await setDoc(doc(db, "rummikub_rooms", roomId, "players", myId), {
       name: myName,
       isHost: true,
       isReady: true,
@@ -1099,7 +1099,7 @@ joinRoomBtn.addEventListener("click", async () => {
   joinRoomBtn.disabled = true;
 
   try {
-    const roomRef = doc(db, "game_rooms", roomId);
+    const roomRef = doc(db, "rummikub_rooms", roomId);
     const roomSnap = await getDoc(roomRef);
 
     if (!roomSnap.exists()) {
@@ -1112,7 +1112,7 @@ joinRoomBtn.addEventListener("click", async () => {
       return;
     }
 
-    const playersSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
+    const playersSnap = await getDocs(collection(db, "rummikub_rooms", roomId, "players"));
     if (playersSnap.size >= 4) {
       alert("방이 가득 차서 입장할 수 없습니다. (최대 4인)");
       return;
@@ -1122,7 +1122,7 @@ joinRoomBtn.addEventListener("click", async () => {
     isHost = false;
     isReady = false;
 
-    await setDoc(doc(db, "game_rooms", roomId, "players", myId), {
+    await setDoc(doc(db, "rummikub_rooms", roomId, "players", myId), {
       name: myName,
       isHost: false,
       isReady: false,
@@ -1156,7 +1156,7 @@ function enterLobby() {
 
   listenSignals();
 
-  unsubscribeRoom = onSnapshot(doc(db, "game_rooms", roomId), (snap) => {
+  unsubscribeRoom = onSnapshot(doc(db, "rummikub_rooms", roomId), (snap) => {
     if (!snap.exists()) {
       alert("방이 삭제되었습니다.");
       leaveRoom();
@@ -1170,7 +1170,7 @@ function enterLobby() {
     }
   });
 
-  const playersQuery = collection(db, "game_rooms", roomId, "players");
+  const playersQuery = collection(db, "rummikub_rooms", roomId, "players");
   unsubscribePlayers = onSnapshot(playersQuery, (snap) => {
     playerListElem.innerHTML = "";
     playerList = [];
@@ -1229,11 +1229,11 @@ readyBtn.addEventListener("click", async () => {
   readyBtn.textContent = isReady ? "준비 취소" : "준비 (Ready)";
   readyBtn.classList.toggle("is-ready", isReady);
 
-  await updateDoc(doc(db, "game_rooms", roomId, "players", myId), { isReady: isReady });
+  await updateDoc(doc(db, "rummikub_rooms", roomId, "players", myId), { isReady: isReady });
 });
 
 startBtn.addEventListener("click", async () => {
-  await updateDoc(doc(db, "game_rooms", roomId), {
+  await updateDoc(doc(db, "rummikub_rooms", roomId), {
     status: "playing",
     lastActive: serverTimestamp()
   });
@@ -1379,15 +1379,15 @@ async function leaveRoom() {
 
   if (roomId && myId) {
     try {
-      await deleteDoc(doc(db, "game_rooms", roomId, "players", myId));
+      await deleteDoc(doc(db, "rummikub_rooms", roomId, "players", myId));
 
-      const pSnap = await getDocs(collection(db, "game_rooms", roomId, "players"));
+      const pSnap = await getDocs(collection(db, "rummikub_rooms", roomId, "players"));
       if (pSnap.empty) {
         await deleteRoom(roomId);
       } else if (isHost) {
         const nextHost = pSnap.docs[0];
-        await updateDoc(doc(db, "game_rooms", roomId), { hostId: nextHost.id });
-        await updateDoc(doc(db, "game_rooms", roomId, "players", nextHost.id), {
+        await updateDoc(doc(db, "rummikub_rooms", roomId), { hostId: nextHost.id });
+        await updateDoc(doc(db, "rummikub_rooms", roomId, "players", nextHost.id), {
           isHost: true,
           isReady: true
         });
@@ -1405,7 +1405,7 @@ leaveBtn.addEventListener("click", leaveRoom);
 
 exitGameBtn.addEventListener("click", async () => {
   try {
-    await updateDoc(doc(db, "game_rooms", roomId), {
+    await updateDoc(doc(db, "rummikub_rooms", roomId), {
       status: "waiting",
       lastActive: serverTimestamp()
     });
