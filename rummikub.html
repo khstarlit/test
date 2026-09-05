@@ -323,34 +323,90 @@ function isValidGroup(tiles) {
 
 function isValidRun(tiles) {
   if (tiles.length < 3) return false;
-  // 조커를 제외한 타일들로 색과 숫자 확인
   const nonJokers = tiles.filter(t => !t.joker);
   if (nonJokers.length === 0) return false;
   const color = nonJokers[0].color;
   if (!nonJokers.every(t => t.color === color)) return false;
 
-  // 숫자 정렬 + 조커 위치 채우기
   const nums = nonJokers.map(t => t.num).sort((a, b) => a - b);
   const jokerCount = tiles.length - nonJokers.length;
 
-  // 중복 숫자 있으면 런 불가
+  // 중복 숫자 불가
   for (let i = 1; i < nums.length; i++) {
     if (nums[i] === nums[i - 1]) return false;
   }
 
-  // 최소~최대 범위 안에 조커로 빈 칸을 채울 수 있는지
+  // 1과 13은 연결될 수 없음 (이미 정렬되어 있으므로 min~max로 검사)
   const min = nums[0];
   const max = nums[nums.length - 1];
+  if (min < 1 || max > 13) return false;
+
+  // 조커로 빈 칸을 채울 수 있는지
   const needed = max - min + 1 - nums.length;
   if (needed > jokerCount) return false;
 
-  // 조커가 남은 경우 앞뒤로 확장 가능하므로 OK
-  // 1 아래나 13 위로 못 가는 제약은 간단히 무시 (플레이어 책임)
+  // 남는 조커는 앞(1 이상) 또는 뒤(13 이하)로 확장 가능해야 함
+  const extraJokers = jokerCount - needed;
+  if (extraJokers > 0) {
+    const canExtendLeft = min - 1;   // 1까지 확장 가능한 칸 수
+    const canExtendRight = 13 - max;
+    if (extraJokers > canExtendLeft + canExtendRight) return false;
+  }
   return true;
 }
 
 function isValidMeld(tiles) {
   return isValidGroup(tiles) || isValidRun(tiles);
+}
+
+/**
+ * 선택된 타일들을 하나 이상의 유효한 멜드로 완전히 분할할 수 있는지 찾고,
+ * 가능하면 멜드 배열을 반환. 불가능하면 null.
+ * (작은 개수이므로 백트래킹으로 충분)
+ */
+function findMeldPartition(tiles) {
+  if (tiles.length === 0) return [];
+  if (tiles.length < 3) return null;
+
+  const n = tiles.length;
+  // 비트마스크 대신 인덱스 조합으로 재귀
+  function solve(remaining) {
+    if (remaining.length === 0) return [];
+    if (remaining.length < 3) return null;
+
+    // remaining의 부분집합 중 크기 3~4 (또는 더 긴 런)을 시도
+    // 성능을 위해 최대 크기 제한 (보통 7~8이면 충분)
+    const maxSize = Math.min(remaining.length, 8);
+
+    // 모든 가능한 부분집합을 시도하는 것은 2^n이라 n<=12 정도까지 가능
+    // 여기서는 조합을 재귀적으로 뽑는다
+    const indices = remaining.map((_, i) => i);
+
+    function* combinations(arr, k) {
+      if (k === 0) { yield []; return; }
+      for (let i = 0; i <= arr.length - k; i++) {
+        for (const tail of combinations(arr.slice(i + 1), k - 1)) {
+          yield [arr[i], ...tail];
+        }
+      }
+    }
+
+    for (let size = Math.min(maxSize, remaining.length); size >= 3; size--) {
+      for (const comboIdx of combinations(indices, size)) {
+        const candidate = comboIdx.map(i => remaining[i]);
+        if (isValidMeld(candidate)) {
+          const rest = remaining.filter((_, i) => !comboIdx.includes(i));
+          const sub = solve(rest);
+          if (sub !== null) {
+            return [candidate, ...sub];
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  return solve(tiles);
 }
 
 function sortTiles(tiles) {
@@ -421,7 +477,7 @@ const Game = {
       advanceTurn = true;
     }
 
-    // ---------- 세트 내기 / 보드 조작 ----------
+    // ---------- 세트 내기 / 보드 조작 (여러 세트 동시 + 조커 포함 재구성) ----------
     else if (action.type === "playOrReform") {
       const selectedIds = action.tileIds || [];
       if (selectedIds.length < 3) {
@@ -432,7 +488,6 @@ const Game = {
       const hand = state.hands[senderId] || [];
       const selectedSet = new Set(selectedIds);
 
-      // 손패에서 가져오기
       const fromHand = [];
       const remainingHand = [];
       for (const t of hand) {
@@ -440,7 +495,6 @@ const Game = {
         else remainingHand.push(t);
       }
 
-      // 테이블에서 가져오기
       const fromTable = [];
       const newTable = [];
       for (const meld of state.table) {
@@ -449,18 +503,15 @@ const Game = {
           if (selectedSet.has(t.id)) fromTable.push(t);
           else kept.push(t);
         }
-        if (kept.length > 0) {
-          newTable.push(kept);
-        }
+        if (kept.length > 0) newTable.push(kept);
       }
 
-      // 실제로 찾은 타일 수 확인
       const collected = [...fromHand, ...fromTable];
       if (collected.length !== selectedIds.length) {
         return { newState: state, message: "선택한 타일 중 일부를 찾을 수 없습니다.", isGameOver: false, advanceTurn: false };
       }
 
-      // 2) 남은 테이블 멜드가 모두 유효한지 검사 (고아 타일 금지)
+      // 2) 남은 테이블이 모두 유효한지 검사
       for (const meld of newTable) {
         if (!isValidMeld(meld)) {
           return {
@@ -472,18 +523,18 @@ const Game = {
         }
       }
 
-      // 3) 선택한 타일들로 새 멜드(들) 만들기
-      //    현재는 "한 번에 하나의 세트"만 지원. 여러 세트를 원하면 여러 번 조작.
-      if (!isValidMeld(collected)) {
+      // 3) 선택한 타일들을 하나 이상의 유효한 멜드로 분할
+      const melds = findMeldPartition(collected);
+      if (!melds || melds.length === 0) {
         return {
           newState: state,
-          message: "선택한 타일이 유효한 그룹 또는 런이 아닙니다.",
+          message: "선택한 타일들을 유효한 세트(들)로 나눌 수 없습니다.\n(그룹 또는 런으로 완전히 나눠져야 합니다)",
           isGameOver: false,
           advanceTurn: false
         };
       }
 
-      // 4) 초기 멜드 체크 (아직 멜드한 적 없으면 손패에서만 와야 하고 30점 이상)
+      // 4) 초기 멜드 체크
       const isInitial = !state.hasMelded[senderId];
       if (isInitial) {
         if (fromTable.length > 0) {
@@ -505,18 +556,24 @@ const Game = {
         }
       }
 
-      // 5) 적용
-      newTable.push(collected);
+      // 5) 적용 (여러 멜드 추가)
+      newTable.push(...melds);
       state.table = newTable;
       state.hands[senderId] = sortTiles(remainingHand);
       state.hasMelded[senderId] = true;
 
       const usedFromTable = fromTable.length;
+      const points = collected.reduce((s, t) => s + tileValue(t), 0);
       if (usedFromTable > 0) {
-        message = `${playerName}님이 테이블 타일 ${usedFromTable}장을 이용해 세트를 재구성했습니다.`;
+        message = `${playerName}님이 테이블 타일 ${usedFromTable}장을 포함해 세트 ${melds.length}개를 만들었습니다.`;
       } else {
-        const points = collected.reduce((s, t) => s + tileValue(t), 0);
-        message = `${playerName}님이 새 세트를 냈습니다. (${points}점)`;
+        message = `${playerName}님이 세트 ${melds.length}개를 냈습니다. (${points}점)`;
+      }
+
+      // 조커를 테이블에서 가져왔는지 안내
+      const tookJoker = fromTable.some(t => t.joker);
+      if (tookJoker) {
+        message += " (조커 사용 포함)";
       }
 
       // 승리 체크
@@ -597,10 +654,11 @@ const Game = {
         </div>
         <div class="rules-hint">
           ${hasMelded
-            ? "✅ 초기 멜드 완료. 손패 + 테이블 타일을 섞어서 세트를 재구성할 수 있습니다.<br>여러 번 조작한 뒤 「턴 종료」를 누르세요."
+            ? "✅ 초기 멜드 완료. 손패 + 테이블 타일(조커 포함)을 선택해 여러 세트를 한 번에 만들 수 있습니다.<br>여러 번 조작 후 「턴 종료」를 누르세요."
             : "⚠️ 초기 멜드: 손패에서만 선택, 합계 30점 이상 필요"}<br>
           그룹 = 같은 숫자·다른 색 3~4장 / 런 = 같은 색·연속 숫자 3장 이상<br>
-          <b>중요</b>: 조작 후 테이블에 3장 미만인 세트가 남으면 거절됩니다.
+          <b>팁</b>: 선택한 타일들이 여러 유효 세트로 나눠질 수 있으면 자동으로 분할됩니다.<br>
+          조커를 테이블에서 가져와 새 세트에 바로 사용할 수 있습니다 (남은 보드가 유효해야 함).
         </div>
       `;
     } else {
