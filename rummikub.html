@@ -2,44 +2,165 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rummikub Stage 1</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>루미큐브 Stage 1</title>
+
 <style>
-*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:700px;margin:0 auto;padding:20px 12px;background:#f1f5f9}.card{background:#fff;padding:24px;border-radius:16px;box-shadow:0 4px 12px rgba(0,0,0,.05)}h2,h3{text-align:center;margin-top:0}input{width:100%;padding:12px;margin:6px 0;font-size:16px;border:1px solid #cbd5e1;border-radius:8px}button{width:100%;padding:12px;margin:6px 0;font-size:16px;font-weight:700;border:none;border-radius:8px;background:#2563eb;color:#fff}.player-list{display:flex;flex-direction:column;gap:8px;margin:20px 0}.player-item{display:flex;justify-content:space-between;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px}#lobby,#game{display:none}.room-code{text-align:center;font-size:28px;font-weight:700;color:#2563eb}.game-header{display:flex;justify-content:space-between;background:#0f172a;color:#fff;padding:10px;border-radius:10px;margin-bottom:12px}#gameArea{margin-top:12px}
-.tile{height:54px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px}
+body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:#f1f5f9;
+    margin:0;
+    padding:20px;
+}
+.wrap{
+    max-width:720px;
+    margin:auto;
+}
+.card{
+    background:white;
+    border-radius:16px;
+    padding:20px;
+    box-shadow:0 4px 12px rgba(0,0,0,.08);
+}
+h1{
+    text-align:center;
+    margin:0 0 8px;
+}
+p{
+    text-align:center;
+    color:#64748b;
+}
+.info{
+    display:flex;
+    justify-content:space-between;
+    font-weight:bold;
+    margin:18px 0;
+}
+.grid{
+    display:grid;
+    grid-template-columns:repeat(7,1fr);
+    gap:8px;
+}
+.tile{
+    height:58px;
+    border-radius:10px;
+    background:white;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:24px;
+    font-weight:bold;
+    border:2px solid;
+}
+button{
+    width:100%;
+    margin-top:18px;
+    padding:14px;
+    border:none;
+    border-radius:10px;
+    background:#2563eb;
+    color:white;
+    font-size:16px;
+    font-weight:bold;
+}
 </style>
 </head>
+
 <body>
-<div class="card" id="login">
-<h2>ð² ë£¨ë¯¸íë¸ Stage 1</h2>
-<p>ì´ íì¼ì ì¬ì©ìê° ì¬ë¦° ííë¦¿ ê¸°ë° 1ë¨ê³ ìììëë¤.</p>
-<input id="name" placeholder="ëë¤ì">
-<button onclick="createRoom()">ë°© ë§ë¤ê¸°</button><hr>
-<input id="joinCode" placeholder="ë°©ë²í¸(ìì)">
-<button onclick="joinRoom()">ë°© ì°¸ê°</button>
+
+<div class="wrap">
+  <div class="card">
+
+    <h1>🎲 루미큐브 Stage 1</h1>
+    <p>106장 생성 · 셔플 · 14장 자동 배분</p>
+
+    <div class="info">
+      <span>남은 타일 <span id="remain">0</span>장</span>
+      <span>내 패 14장</span>
+    </div>
+
+    <div class="grid" id="hand"></div>
+
+    <button onclick="deal()">새로 셔플하기</button>
+
+  </div>
 </div>
-<div class="card" id="lobby">
-<h3>ëê¸°ì¤</h3>
-<div class="room-code" id="roomNo"></div>
-<div class="player-list" id="playerList"></div>
-<button id="startBtn" onclick="startGame()">ê²ì ìì</button>
-</div>
-<div class="card" id="game">
-<div class="game-header"><div>ë¼ì´ë 1</div><div>íì¼ ë°°ë¶ ìë£</div></div>
-<div id="gameArea"></div>
-</div>
+
 <script>
-let playerList=[];let myId="";let roomId="";
-const Game={
- makeTiles(){const colors=["red","blue","yellow","black"];const t=[];let id=0;for(let s=0;s<2;s++)for(const c of colors)for(let n=1;n<=13;n++)t.push({id:"t"+id++,color:c,number:n,joker:false});t.push({id:"j1",joker:true},{id:"j2",joker:true});return t},
- shuffle(a){a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a},
- createInitialState(){const bag=this.shuffle(this.makeTiles());const hands={};playerList.forEach(p=>hands[p.id]=bag.splice(0,14));return{bag,board:[],hands}},
- render(state){const area=document.getElementById("gameArea");const my=state.hands[myId]||[];const color={red:"#dc2626",blue:"#2563eb",yellow:"#ca8a04",black:"#111827"};area.innerHTML=`<b>ë¨ì íì¼ ${state.bag.length}ì¥</b><p>ë´ í¨ (${my.length})</p><div id=hand style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px"></div>`;const hand=document.getElementById("hand");my.forEach(tile=>{const d=document.createElement("div");const b=tile.joker?"#7c3aed":color[tile.color];d.className="tile";d.style.border="2px solid "+b;d.innerHTML=`<span style="color:${b}">${tile.joker?"â":tile.number}</span>`;hand.appendChild(d)})}
-};
-function createRoom(){const n=name.value.trim();if(!n)return alert("ëë¤ì");myId="p1";roomId=(100000+Math.floor(Math.random()*900000)).toString();playerList=[{id:"p1",name:n},{id:"p2",name:"ìë"}];login.style.display="none";lobby.style.display="block";roomNo.textContent=roomId;renderLobby()}
-function joinRoom(){createRoom()}
-function renderLobby(){playerListEl=playerList.map(p=>`<div class=player-item><b>${p.name}</b><span>READY</span></div>`).join("");playerList.innerHTML=playerListEl}
-function startGame(){const s=Game.createInitialState();lobby.style.display="none";game.style.display="block";Game.render(s)}
+const COLORS=[
+  {name:"red",hex:"#dc2626"},
+  {name:"blue",hex:"#2563eb"},
+  {name:"yellow",hex:"#ca8a04"},
+  {name:"black",hex:"#111827"}
+];
+
+// 106장 생성
+function makeTiles(){
+  const tiles=[];
+  let id=0;
+
+  for(let set=0; set<2; set++){
+    for(const c of COLORS){
+      for(let n=1; n<=13; n++){
+        tiles.push({
+          id:"t"+id++,
+          color:c.name,
+          hex:c.hex,
+          number:n,
+          joker:false
+        });
+      }
+    }
+  }
+
+  tiles.push({id:"j1",joker:true});
+  tiles.push({id:"j2",joker:true});
+
+  return tiles;
+}
+
+// 셔플
+function shuffle(arr){
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+// 14장 배분
+function deal(){
+  const bag=shuffle(makeTiles());
+  const hand=bag.splice(0,14);
+
+  document.getElementById("remain").textContent=bag.length;
+
+  const handDiv=document.getElementById("hand");
+  handDiv.innerHTML="";
+
+  hand.forEach(tile=>{
+
+    const div=document.createElement("div");
+    div.className="tile";
+
+    if(tile.joker){
+      div.style.borderColor="#7c3aed";
+      div.style.color="#7c3aed";
+      div.textContent="★";
+    }else{
+      div.style.borderColor=tile.hex;
+      div.style.color=tile.hex;
+      div.textContent=tile.number;
+    }
+
+    handDiv.appendChild(div);
+  });
+}
+
+// 시작 시 자동 배분
+deal();
 </script>
+
 </body>
 </html>
